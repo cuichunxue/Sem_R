@@ -35,6 +35,59 @@
   animation: fadeIn 0.3s ease;
 }
 
+/* GUIビルダー: 因子カード */
+.factor-card {
+  transition: all 0.3s ease;
+}
+
+.factor-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+/* GUIビルダー: チェックボックスグループ */
+.factor-card .checkbox-inline,
+.factor-card .form-check-inline {
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.factor-card .form-check-input:checked + .form-check-label {
+  font-weight: 600;
+  color: #3498db;
+}
+
+/* 構造パス/共分散のチェックボックス */
+.shiny-input-checkboxgroup .checkbox label,
+.shiny-input-checkboxgroup .form-check-label {
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.shiny-input-checkboxgroup .checkbox label:hover,
+.shiny-input-checkboxgroup .form-check-label:hover {
+  background-color: #f0f0f0;
+}
+
+/* 生成されたプレビュー */
+#model-generated_preview {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 1rem;
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  color: #2c3e50;
+}
+
+/* バリデーションアラート */
+.factor-card + .alert {
+  margin-top: 0;
+}
+
 /* 印刷スタイル */
 @media print {
   .sidebar, .navbar, .btn {

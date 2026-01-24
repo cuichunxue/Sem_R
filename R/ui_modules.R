@@ -164,13 +164,18 @@ model_ui <- function(id) {
                   tags$span(tags$i(class = "fas fa-layer-group me-2"), "因子定義（測定モデル）"),
                   actionButton(
                     ns("add_factor"),
-                    tags$span(tags$i(class = "fas fa-plus")),
+                    tags$span(tags$i(class = "fas fa-plus me-1"), "因子追加"),
                     class = "btn-sm btn-success"
                   )
                 ),
                 card_body(
                   style = "max-height: 500px; overflow-y: auto;",
-                  uiOutput(ns("factor_definitions"))
+                  tags$p(class = "text-muted small mb-3",
+                    tags$i(class = "fas fa-info-circle me-1"),
+                    "各因子に3つ以上の指標変数を選択することを推奨します"
+                  ),
+                  uiOutput(ns("factor_definitions")),
+                  uiOutput(ns("factor_validation"))
                 )
               )
             ),

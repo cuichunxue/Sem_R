@@ -378,33 +378,47 @@ model_server <- function(id, rv) {
         return(tags$div(
           class = "text-center text-muted py-4",
           tags$i(class = "fas fa-plus-circle fa-2x mb-2"),
-          tags$p("「+」ボタンで因子を追加してください")
+          tags$p("「因子追加」ボタンで因子を追加してください")
         ))
       }
 
       tagList(
         lapply(names(factors), function(fid) {
           f <- factors[[fid]]
+          n_indicators <- length(f$indicators)
+
+          # 指標数に応じた色を設定
+          border_color <- if (n_indicators == 0) "#e74c3c" else if (n_indicators < 3) "#f39c12" else "#18bc9c"
+          badge_class <- if (n_indicators == 0) "bg-danger" else if (n_indicators < 3) "bg-warning" else "bg-success"
+
           tags$div(
             class = "card mb-3 factor-card",
-            style = "border-left: 4px solid #3498db;",
+            style = paste0("border-left: 4px solid ", border_color, ";"),
             tags$div(
               class = "card-body py-2 px-3",
-              # 因子名入力
+              # 因子名入力とバッジ
               fluidRow(
-                column(8,
+                column(6,
                   textInput(
                     ns(paste0("factor_name_", fid)),
                     NULL,
                     value = f$name,
-                    placeholder = "因子名"
+                    placeholder = "因子名を入力"
                   )
                 ),
-                column(4,
+                column(3,
+                  tags$div(
+                    class = "pt-2 text-center",
+                    tags$span(class = paste("badge", badge_class),
+                      n_indicators, "個選択"
+                    )
+                  )
+                ),
+                column(3,
                   actionButton(
                     ns(paste0("delete_factor_", fid)),
                     tags$i(class = "fas fa-trash"),
-                    class = "btn-sm btn-outline-danger w-100",
+                    class = "btn-sm btn-outline-danger w-100 mt-1",
                     onclick = sprintf(
                       "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
                       ns("delete_factor"), fid
@@ -413,7 +427,7 @@ model_server <- function(id, rv) {
                 )
               ),
               # 指標変数選択
-              tags$label(class = "small text-muted", "指標変数を選択:"),
+              tags$label(class = "small text-muted", "指標変数を選択（クリックで追加/削除）:"),
               checkboxGroupInput(
                 ns(paste0("indicators_", fid)),
                 label = NULL,
@@ -463,26 +477,17 @@ model_server <- function(id, rv) {
       pairs <- expand.grid(from = factor_names, to = factor_names, stringsAsFactors = FALSE)
       pairs <- pairs[pairs$from != pairs$to, ]
 
-      tagList(
-        lapply(1:nrow(pairs), function(i) {
-          from <- pairs$from[i]
-          to <- pairs$to[i]
-          checkbox_id <- paste0("reg_", gsub("[^a-zA-Z0-9]", "_", from), "_", gsub("[^a-zA-Z0-9]", "_", to))
+      # チェックボックスの選択肢を作成
+      choices <- setNames(
+        paste0(pairs$to, " ~ ", pairs$from),
+        paste0(pairs$to, " ← ", pairs$from)
+      )
 
-          tags$div(
-            class = "form-check",
-            tags$input(
-              type = "checkbox",
-              class = "form-check-input",
-              id = ns(checkbox_id)
-            ),
-            tags$label(
-              class = "form-check-label",
-              `for` = ns(checkbox_id),
-              tags$code(to), " ← ", tags$code(from)
-            )
-          )
-        })
+      checkboxGroupInput(
+        ns("structural_paths_selected"),
+        label = NULL,
+        choices = choices,
+        selected = character(0)
       )
     })
 
@@ -499,26 +504,20 @@ model_server <- function(id, rv) {
       # 共分散は対称なので、半分の組み合わせ
       pairs <- combn(factor_names, 2, simplify = FALSE)
 
-      tags$div(
-        tags$p(class = "small text-muted", "※ 因子間の共分散はデフォルトで推定されます"),
-        lapply(pairs, function(pair) {
-          checkbox_id <- paste0("cov_", gsub("[^a-zA-Z0-9]", "_", pair[1]), "_", gsub("[^a-zA-Z0-9]", "_", pair[2]))
+      # チェックボックスの選択肢を作成
+      choices <- setNames(
+        sapply(pairs, function(p) paste0(p[1], " ~~ 0*", p[2])),
+        sapply(pairs, function(p) paste0(p[1], " ↔ ", p[2], " を0に固定"))
+      )
 
-          tags$div(
-            class = "form-check",
-            tags$input(
-              type = "checkbox",
-              class = "form-check-input",
-              id = ns(checkbox_id),
-              checked = NA  # デフォルトでチェックしない（自動推定されるため）
-            ),
-            tags$label(
-              class = "form-check-label",
-              `for` = ns(checkbox_id),
-              tags$code(pair[1]), " ↔ ", tags$code(pair[2]), " を0に固定"
-            )
-          )
-        })
+      tags$div(
+        tags$p(class = "small text-muted", "※ 因子間の共分散はデフォルトで推定されます。チェックすると0に固定します。"),
+        checkboxGroupInput(
+          ns("covariance_paths_selected"),
+          label = NULL,
+          choices = choices,
+          selected = character(0)
+        )
       )
     })
 
@@ -545,34 +544,13 @@ model_server <- function(id, rv) {
         return()
       }
 
-      # 構造モデル（回帰）生成
-      structural_lines <- character(0)
-      factor_names <- sapply(factors, function(f) f$name)
-      if (length(factor_names) >= 2) {
-        pairs <- expand.grid(from = factor_names, to = factor_names, stringsAsFactors = FALSE)
-        pairs <- pairs[pairs$from != pairs$to, ]
+      # 構造モデル（回帰）生成 - checkboxGroupInputから取得
+      structural_lines <- input$structural_paths_selected
+      if (is.null(structural_lines)) structural_lines <- character(0)
 
-        for (i in 1:nrow(pairs)) {
-          from <- pairs$from[i]
-          to <- pairs$to[i]
-          checkbox_id <- paste0("reg_", gsub("[^a-zA-Z0-9]", "_", from), "_", gsub("[^a-zA-Z0-9]", "_", to))
-          if (isTRUE(input[[checkbox_id]])) {
-            structural_lines <- c(structural_lines, paste0(to, " ~ ", from))
-          }
-        }
-      }
-
-      # 共分散制約（0に固定）生成
-      covariance_lines <- character(0)
-      if (length(factor_names) >= 2) {
-        pairs <- combn(factor_names, 2, simplify = FALSE)
-        for (pair in pairs) {
-          checkbox_id <- paste0("cov_", gsub("[^a-zA-Z0-9]", "_", pair[1]), "_", gsub("[^a-zA-Z0-9]", "_", pair[2]))
-          if (isTRUE(input[[checkbox_id]])) {
-            covariance_lines <- c(covariance_lines, paste0(pair[1], " ~~ 0*", pair[2]))
-          }
-        }
-      }
+      # 共分散制約（0に固定）生成 - checkboxGroupInputから取得
+      covariance_lines <- input$covariance_paths_selected
+      if (is.null(covariance_lines)) covariance_lines <- character(0)
 
       # 構文を組み立て
       syntax_parts <- character(0)
@@ -595,6 +573,36 @@ model_server <- function(id, rv) {
       rv$model_syntax <- generated
 
       showNotification("構文を生成しました！", type = "message")
+    })
+
+    # --- 因子バリデーション表示 ---
+    output$factor_validation <- renderUI({
+      factors <- local_rv$factors
+
+      if (length(factors) == 0) return(NULL)
+
+      warnings <- character(0)
+
+      for (f in factors) {
+        n_indicators <- length(f$indicators)
+        if (n_indicators == 0) {
+          warnings <- c(warnings, paste0("「", f$name, "」に指標変数が選択されていません"))
+        } else if (n_indicators < 3) {
+          warnings <- c(warnings, paste0("「", f$name, "」の指標変数が", n_indicators, "個です（推奨: 3個以上）"))
+        }
+      }
+
+      if (length(warnings) > 0) {
+        tags$div(
+          class = "alert alert-warning mt-3 py-2",
+          tags$i(class = "fas fa-exclamation-triangle me-2"),
+          tags$strong("確認事項:"),
+          tags$ul(
+            class = "mb-0 mt-1",
+            lapply(warnings, function(w) tags$li(w))
+          )
+        )
+      }
     })
 
     # --- 生成プレビュー ---
