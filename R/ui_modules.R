@@ -203,10 +203,31 @@ model_ui <- function(id) {
                   )
                 ),
                 card_body(
-                  style = "max-height: 500px; overflow-y: auto;",
-                  tags$p(class = "text-muted small mb-3",
+                  style = "max-height: 550px; overflow-y: auto;",
+                  # 変数フィルター
+                  tags$div(
+                    class = "mb-2",
+                    fluidRow(
+                      column(8,
+                        textInput(
+                          ns("var_filter"),
+                          NULL,
+                          placeholder = "変数をフィルター（例: x, item）",
+                          width = "100%"
+                        )
+                      ),
+                      column(4,
+                        actionButton(
+                          ns("clear_filter"),
+                          tags$i(class = "fas fa-times"),
+                          class = "btn-sm btn-outline-secondary w-100 mt-1"
+                        )
+                      )
+                    )
+                  ),
+                  tags$p(class = "text-muted small mb-2",
                     tags$i(class = "fas fa-info-circle me-1"),
-                    "各因子に3つ以上の指標変数を選択することを推奨します"
+                    "各因子に3つ以上の指標変数を選択することを推奨"
                   ),
                   uiOutput(ns("factor_definitions")),
                   uiOutput(ns("factor_validation"))

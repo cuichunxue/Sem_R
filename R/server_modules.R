@@ -463,6 +463,11 @@ model_server <- function(id, rv) {
       )
     })
 
+    # --- 変数フィルタークリア ---
+    observeEvent(input$clear_filter, {
+      updateTextInput(session, "var_filter", value = "")
+    })
+
     # --- 因子定義UI ---
     output$factor_definitions <- renderUI({
       if (is.null(rv$data)) {
@@ -474,7 +479,15 @@ model_server <- function(id, rv) {
       }
 
       factors <- local_rv$factors
-      vars <- names(rv$data)[sapply(rv$data, is.numeric)]
+      all_vars <- names(rv$data)[sapply(rv$data, is.numeric)]
+
+      # フィルター適用
+      filter_text <- input$var_filter
+      if (!is.null(filter_text) && trimws(filter_text) != "") {
+        vars <- all_vars[grepl(filter_text, all_vars, ignore.case = TRUE)]
+      } else {
+        vars <- all_vars
+      }
 
       if (length(factors) == 0) {
         return(tags$div(
@@ -1090,15 +1103,63 @@ estimation_server <- function(id, rv) {
 
       }, error = function(e) {
         waiter$hide()
-        rv$error_message <- paste("分析エラー:", e$message)
+
+        # エラーメッセージを解析して日本語のヘルプを追加
+        error_msg <- e$message
+        help_msg <- ""
+
+        if (grepl("covariance matrix", error_msg, ignore.case = TRUE)) {
+          help_msg <- "データに問題がある可能性があります。欠損値や外れ値を確認してください。"
+        } else if (grepl("not positive definite", error_msg, ignore.case = TRUE)) {
+          help_msg <- "共分散行列が正定値ではありません。変数間に完全な相関がないか確認してください。"
+        } else if (grepl("convergence", error_msg, ignore.case = TRUE)) {
+          help_msg <- "モデルが収束しませんでした。モデルを簡略化するか、開始値を調整してください。"
+        } else if (grepl("singular", error_msg, ignore.case = TRUE)) {
+          help_msg <- "行列が特異です。冗長な変数や線形従属がないか確認してください。"
+        } else if (grepl("degrees of freedom", error_msg, ignore.case = TRUE)) {
+          help_msg <- "自由度が負です。モデルが過剰識別されていない可能性があります。"
+        } else if (grepl("unknown variable", error_msg, ignore.case = TRUE)) {
+          help_msg <- "モデル構文の変数名がデータに存在しません。変数名を確認してください。"
+        }
+
+        rv$error_message <- error_msg
+        rv$error_help <- help_msg
         rv$estimation_complete <- FALSE
-      }, warning = function(w) {
+
         showNotification(
-          paste("警告:", w$message),
+          tags$div(
+            tags$strong("分析エラー"),
+            tags$br(),
+            tags$span(error_msg),
+            if (help_msg != "") tags$br(),
+            if (help_msg != "") tags$small(class = "text-info", help_msg)
+          ),
+          type = "error",
+          duration = 15
+        )
+      }, warning = function(w) {
+        # 警告メッセージも日本語で補足
+        warn_msg <- w$message
+        warn_help <- ""
+
+        if (grepl("negative variance", warn_msg, ignore.case = TRUE)) {
+          warn_help <- "（Heywoodケース: モデルの再検討を推奨）"
+        } else if (grepl("not converged", warn_msg, ignore.case = TRUE)) {
+          warn_help <- "（収束していない可能性あり）"
+        }
+
+        showNotification(
+          paste0("警告: ", warn_msg, " ", warn_help),
           type = "warning",
           duration = 10
         )
       })
+    })
+
+    # --- エラークリア ---
+    observeEvent(input$clear_error, {
+      rv$error_message <- NULL
+      rv$error_help <- NULL
     })
 
     # --- 分析ステータス ---
@@ -1124,6 +1185,26 @@ estimation_server <- function(id, rv) {
       }
 
       if (!rv$estimation_complete) {
+        # エラーがあれば表示
+        if (!is.null(rv$error_message) && rv$error_message != "") {
+          return(
+            tags$div(
+              class = "text-center py-3",
+              tags$i(class = "fas fa-exclamation-circle fa-3x text-danger mb-3"),
+              tags$p(class = "text-danger", tags$strong("分析エラー")),
+              tags$p(class = "small text-muted", rv$error_message),
+              if (!is.null(rv$error_help) && rv$error_help != "") {
+                tags$p(class = "small text-info", rv$error_help)
+              },
+              actionButton(
+                ns("clear_error"),
+                "エラーをクリア",
+                class = "btn-sm btn-outline-secondary mt-2"
+              )
+            )
+          )
+        }
+
         return(
           tags$div(
             class = "text-center py-4",
