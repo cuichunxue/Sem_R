@@ -1,0 +1,48 @@
+/* =============================================================================
+   SEM Analysis Web App - Additional Custom Styles
+   ============================================================================= */
+
+/* スムーズなアニメーション */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* 入力フォーカス */
+.form-control:focus,
+.form-select:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+/* アコーディオン */
+.accordion-button:not(.collapsed) {
+  background-color: #e8f4fc;
+  color: #2c3e50;
+}
+
+/* ツールチップ */
+[data-bs-toggle="tooltip"] {
+  cursor: help;
+}
+
+/* アニメーション */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card {
+  animation: fadeIn 0.3s ease;
+}
+
+/* 印刷スタイル */
+@media print {
+  .sidebar, .navbar, .btn {
+    display: none !important;
+  }
+
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+}

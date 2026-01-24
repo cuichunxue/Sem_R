@@ -1,0 +1,35 @@
+# R
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+*.Rproj.user/
+
+# Shiny
+rsconnect/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# データファイル（サンプル以外）
+data/*.csv
+data/*.xlsx
+data/*.sav
+!data/sample_*.csv
+
+# ログ
+logs/
+*.log
+
+# 一時ファイル
+tmp/
+temp/
+*.tmp
