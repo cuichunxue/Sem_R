@@ -77,28 +77,38 @@ ui <- page_navbar(
   fillable = TRUE,
 
   # Head要素
-  header = tags$head(
-    # メタタグ
-    tags$meta(charset = "UTF-8"),
-    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
-    tags$meta(name = "description", content = "構造方程式モデリング(SEM)解析ツール - lavaan"),
-
-    # ファビコン
-    tags$link(rel = "icon", type = "image/svg+xml", href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>"),
-
-    # Font Awesome
-    tags$link(
-      rel = "stylesheet",
-      href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
-      crossorigin = "anonymous"
+  header = tagList(
+    # スキップリンク（アクセシビリティ）
+    tags$a(
+      href = "#main-content",
+      class = "skip-link",
+      "メインコンテンツへスキップ"
     ),
 
-    # カスタムCSS
-    tags$style(HTML(custom_css())),
-    tags$link(rel = "stylesheet", href = "custom.css"),
+    tags$head(
+      # メタタグ
+      tags$meta(charset = "UTF-8"),
+      tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+      tags$meta(name = "description", content = "構造方程式モデリング(SEM)解析ツール - lavaan"),
+      tags$meta(name = "robots", content = "noindex, nofollow"),
+      tags$meta(name = "theme-color", content = "#2c3e50"),
 
-    # JavaScript
-    tags$script(HTML(sprintf("
+      # ファビコン
+      tags$link(rel = "icon", type = "image/svg+xml", href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>"),
+
+      # Font Awesome
+      tags$link(
+        rel = "stylesheet",
+        href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
+        crossorigin = "anonymous"
+      ),
+
+      # カスタムCSS
+      tags$style(HTML(custom_css())),
+      tags$link(rel = "stylesheet", href = "custom.css"),
+
+      # JavaScript
+      tags$script(HTML(sprintf("
       // アプリケーション設定
       var APP_CONFIG = %s;
 
@@ -170,10 +180,33 @@ ui <- page_navbar(
         console.error('Error:', msg, 'at', url, lineNo);
         return false;
       };
+
+      // アクセシビリティ: ライブリージョン通知
+      window.announceToSR = function(message) {
+        var region = document.getElementById('sr-announcements');
+        if (region) {
+          region.textContent = message;
+          setTimeout(function() { region.textContent = ''; }, 1000);
+        }
+      };
+
+      // 分析完了時のスクリーンリーダー通知
+      Shiny.addCustomMessageHandler('announceMessage', function(message) {
+        announceToSR(message);
+      });
     ", jsonlite::toJSON(APP_CONFIG, auto_unbox = TRUE)))),
 
-    useShinyjs(),
-    useWaiter()
+      useShinyjs(),
+      useWaiter(),
+
+      # スクリーンリーダー用ライブリージョン
+      tags$div(
+        id = "sr-announcements",
+        class = "sr-only",
+        `aria-live` = "polite",
+        `aria-atomic` = "true"
+      )
+    )
   ),
 
   # フッター
@@ -197,49 +230,54 @@ ui <- page_navbar(
 
   # --- データタブ ---
   nav_panel(
-    title = tags$span(tags$i(class = "fas fa-database me-1"), "データ"),
+    title = tags$span(tags$i(class = "fas fa-database me-1", `aria-hidden` = "true"), "データ"),
     value = "data_tab",
-    data_ui("data")
+    tags$main(
+      id = "main-content",
+      role = "main",
+      `aria-label` = "メインコンテンツ",
+      data_ui("data")
+    )
   ),
 
   # --- モデル定義タブ ---
   nav_panel(
-    title = tags$span(tags$i(class = "fas fa-code me-1"), "モデル定義"),
+    title = tags$span(tags$i(class = "fas fa-code me-1", `aria-hidden` = "true"), "モデル定義"),
     value = "model_tab",
     model_ui("model")
   ),
 
   # --- 推定設定タブ ---
   nav_panel(
-    title = tags$span(tags$i(class = "fas fa-cogs me-1"), "推定設定"),
+    title = tags$span(tags$i(class = "fas fa-cogs me-1", `aria-hidden` = "true"), "推定設定"),
     value = "estimation_tab",
     estimation_ui("estimation")
   ),
 
   # --- 結果タブ ---
   nav_panel(
-    title = tags$span(tags$i(class = "fas fa-chart-bar me-1"), "結果"),
+    title = tags$span(tags$i(class = "fas fa-chart-bar me-1", `aria-hidden` = "true"), "結果"),
     value = "results_tab",
     results_ui("results")
   ),
 
   # --- パス図タブ ---
   nav_panel(
-    title = tags$span(tags$i(class = "fas fa-diagram-project me-1"), "パス図"),
+    title = tags$span(tags$i(class = "fas fa-diagram-project me-1", `aria-hidden` = "true"), "パス図"),
     value = "diagram_tab",
     diagram_ui("diagram")
   ),
 
   # --- モデル比較タブ ---
   nav_panel(
-    title = tags$span(tags$i(class = "fas fa-balance-scale me-1"), "モデル比較"),
+    title = tags$span(tags$i(class = "fas fa-balance-scale me-1", `aria-hidden` = "true"), "モデル比較"),
     value = "comparison_tab",
     comparison_ui("comparison")
   ),
 
   # --- ヘルプタブ ---
   nav_panel(
-    title = tags$span(tags$i(class = "fas fa-question-circle me-1"), "ヘルプ"),
+    title = tags$span(tags$i(class = "fas fa-question-circle me-1", `aria-hidden` = "true"), "ヘルプ"),
     value = "help_tab",
     help_ui("help")
   ),
@@ -348,6 +386,21 @@ server <- function(input, output, session) {
   observe({
     if (!is.null(rv$error_message) && rv$error_message != "") {
       log_event("Error", rv$error_message)
+    }
+  })
+
+  # --- 分析完了時のスクリーンリーダー通知 ---
+  observe({
+    if (isTRUE(rv$estimation_complete) && !is.null(rv$fit)) {
+      fm <- tryCatch(
+        fitMeasures(rv$fit, c("cfi", "rmsea")),
+        error = function(e) c(cfi = NA, rmsea = NA)
+      )
+      msg <- sprintf(
+        "分析が完了しました。CFI: %.3f, RMSEA: %.3f",
+        fm["cfi"], fm["rmsea"]
+      )
+      session$sendCustomMessage("announceMessage", msg)
     }
   })
 }
