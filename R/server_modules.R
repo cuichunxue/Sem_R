@@ -1239,6 +1239,452 @@ diagram_server <- function(id, rv) {
 }
 
 # -----------------------------------------------------------------------------
+# モデル比較モジュール サーバー
+# -----------------------------------------------------------------------------
+comparison_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
+
+    # --- ローカルリアクティブ値 ---
+    local_rv <- reactiveValues(
+      saved_models = list()
+    )
+
+    # --- モデル保存 ---
+    observeEvent(input$save_model, {
+      # バリデーション
+      if (is.null(rv$fit)) {
+        showNotification("保存するモデルがありません。先に分析を実行してください。", type = "error")
+        return()
+      }
+
+      model_name <- trimws(input$model_name)
+      if (model_name == "") {
+        model_name <- paste0("Model ", length(local_rv$saved_models) + 1)
+      }
+
+      # 同名チェック
+      if (model_name %in% names(local_rv$saved_models)) {
+        showNotification("同じ名前のモデルが既に存在します。別の名前を指定してください。", type = "warning")
+        return()
+      }
+
+      # モデルを保存
+      local_rv$saved_models[[model_name]] <- list(
+        fit = rv$fit,
+        syntax = rv$model_syntax,
+        description = input$model_description,
+        timestamp = Sys.time(),
+        fit_measures = fitMeasures(rv$fit)
+      )
+
+      # 入力をクリア
+      updateTextInput(session, "model_name", value = "")
+      updateTextAreaInput(session, "model_description", value = "")
+
+      # 選択肢を更新
+      update_model_choices()
+
+      showNotification(paste0("モデル「", model_name, "」を保存しました"), type = "message")
+    })
+
+    # --- 選択肢更新関数 ---
+    update_model_choices <- function() {
+      choices <- names(local_rv$saved_models)
+      if (length(choices) == 0) choices <- NULL
+
+      updateSelectInput(session, "model_1", choices = choices)
+      updateSelectInput(session, "model_2", choices = choices)
+      updateSelectInput(session, "param_model_1", choices = choices)
+      updateSelectInput(session, "param_model_2", choices = choices)
+    }
+
+    # --- 保存済みモデル一覧 ---
+    output$saved_models_list <- renderUI({
+      models <- local_rv$saved_models
+
+      if (length(models) == 0) {
+        return(tags$p(class = "text-muted text-center", "保存されたモデルはありません"))
+      }
+
+      tagList(
+        lapply(names(models), function(name) {
+          m <- models[[name]]
+          fm <- m$fit_measures
+
+          tags$div(
+            class = "card mb-2",
+            tags$div(
+              class = "card-body py-2 px-3",
+              tags$div(
+                class = "d-flex justify-content-between align-items-start",
+                tags$div(
+                  tags$strong(name),
+                  tags$br(),
+                  tags$small(
+                    class = "text-muted",
+                    sprintf("CFI=%.3f, RMSEA=%.3f", fm["cfi"], fm["rmsea"])
+                  ),
+                  if (m$description != "") {
+                    tags$br()
+                    tags$small(class = "text-info", m$description)
+                  }
+                ),
+                tags$button(
+                  class = "btn btn-sm btn-outline-danger",
+                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})", ns("delete_model"), name),
+                  tags$i(class = "fas fa-times")
+                )
+              )
+            )
+          )
+        })
+      )
+    })
+
+    # --- モデル削除 ---
+    observeEvent(input$delete_model, {
+      model_name <- input$delete_model
+      if (model_name %in% names(local_rv$saved_models)) {
+        local_rv$saved_models[[model_name]] <- NULL
+        update_model_choices()
+        showNotification(paste0("モデル「", model_name, "」を削除しました"), type = "message")
+      }
+    })
+
+    # --- 全モデルクリア ---
+    observeEvent(input$clear_all_models, {
+      local_rv$saved_models <- list()
+      update_model_choices()
+      showNotification("全てのモデルをクリアしました", type = "message")
+    })
+
+    # --- メッセージ表示 ---
+    output$no_models_message <- renderUI({
+      if (length(local_rv$saved_models) < 2) {
+        tags$div(
+          class = "alert alert-info",
+          tags$i(class = "fas fa-info-circle me-2"),
+          "比較するには2つ以上のモデルを保存してください。",
+          tags$br(),
+          tags$small("「推定設定」タブで分析を実行し、左のパネルからモデルを保存できます。")
+        )
+      }
+    })
+
+    # --- 比較テーブル ---
+    output$comparison_table <- renderDT({
+      models <- local_rv$saved_models
+
+      if (length(models) < 1) {
+        return(NULL)
+      }
+
+      # 適合度指標を取得
+      indices <- input$compare_indices
+      if (is.null(indices) || length(indices) == 0) {
+        indices <- c("cfi", "tli", "rmsea", "srmr", "aic", "bic")
+      }
+
+      # テーブル作成
+      comparison_df <- data.frame(
+        モデル = names(models),
+        stringsAsFactors = FALSE
+      )
+
+      for (idx in indices) {
+        values <- sapply(models, function(m) {
+          val <- m$fit_measures[idx]
+          if (is.na(val)) return(NA)
+          if (idx %in% c("chisq", "aic", "bic")) {
+            sprintf("%.2f", val)
+          } else if (idx == "df") {
+            sprintf("%.0f", val)
+          } else {
+            sprintf("%.3f", val)
+          }
+        })
+        comparison_df[[toupper(idx)]] <- values
+      }
+
+      # 最良モデルをハイライト
+      datatable(
+        comparison_df,
+        options = list(
+          dom = 't',
+          pageLength = 20,
+          ordering = TRUE
+        ),
+        rownames = FALSE,
+        class = 'table-striped table-bordered'
+      )
+    })
+
+    # --- χ²差検定 ---
+    observeEvent(input$run_chisq_diff, {
+      model_1_name <- input$model_1
+      model_2_name <- input$model_2
+
+      if (is.null(model_1_name) || is.null(model_2_name)) {
+        showNotification("2つのモデルを選択してください", type = "error")
+        return()
+      }
+
+      if (model_1_name == model_2_name) {
+        showNotification("異なるモデルを選択してください", type = "error")
+        return()
+      }
+
+      model_1 <- local_rv$saved_models[[model_1_name]]
+      model_2 <- local_rv$saved_models[[model_2_name]]
+
+      if (is.null(model_1) || is.null(model_2)) {
+        showNotification("モデルが見つかりません", type = "error")
+        return()
+      }
+
+      # 適合度指標取得
+      fm1 <- model_1$fit_measures
+      fm2 <- model_2$fit_measures
+
+      # χ²差検定
+      chisq_diff <- abs(fm1["chisq"] - fm2["chisq"])
+      df_diff <- abs(fm1["df"] - fm2["df"])
+
+      if (df_diff == 0) {
+        output$chisq_diff_result <- renderUI({
+          tags$div(
+            class = "alert alert-warning",
+            tags$i(class = "fas fa-exclamation-triangle me-2"),
+            "自由度の差が0です。これらのモデルはネストされていない可能性があります。"
+          )
+        })
+        return()
+      }
+
+      p_value <- pchisq(chisq_diff, df_diff, lower.tail = FALSE)
+
+      output$chisq_diff_result <- renderUI({
+        significant <- p_value < 0.05
+
+        # どちらが良いか判定
+        if (fm1["aic"] < fm2["aic"]) {
+          better_model <- model_1_name
+          better_reason <- "AICが低い"
+        } else {
+          better_model <- model_2_name
+          better_reason <- "AICが低い"
+        }
+
+        tags$div(
+          tags$div(
+            class = "result-panel",
+            tags$h5("χ²差検定結果"),
+            tags$table(
+              class = "table table-sm",
+              tags$tbody(
+                tags$tr(
+                  tags$td(tags$strong("Δχ²")),
+                  tags$td(sprintf("%.3f", chisq_diff))
+                ),
+                tags$tr(
+                  tags$td(tags$strong("Δdf")),
+                  tags$td(sprintf("%.0f", df_diff))
+                ),
+                tags$tr(
+                  tags$td(tags$strong("p値")),
+                  tags$td(
+                    sprintf("%.4f", p_value),
+                    if (significant) tags$span(class = "badge bg-success ms-2", "有意") else tags$span(class = "badge bg-secondary ms-2", "非有意")
+                  )
+                )
+              )
+            )
+          ),
+          tags$div(
+            class = if(significant) "alert alert-success" else "alert alert-info",
+            if (significant) {
+              tagList(
+                tags$i(class = "fas fa-check-circle me-2"),
+                tags$strong("結論: "),
+                "2つのモデル間に統計的に有意な差があります（p < .05）。",
+                tags$br(),
+                sprintf("情報量基準に基づくと、「%s」が推奨されます（%s）。", better_model, better_reason)
+              )
+            } else {
+              tagList(
+                tags$i(class = "fas fa-info-circle me-2"),
+                tags$strong("結論: "),
+                "2つのモデル間に統計的に有意な差はありません（p ≥ .05）。",
+                tags$br(),
+                "より節約的なモデル（自由度が大きい方）を選択することが推奨されます。"
+              )
+            }
+          )
+        )
+      })
+    })
+
+    # --- 視覚的比較プロット ---
+    output$comparison_plot <- renderPlot({
+      models <- local_rv$saved_models
+
+      if (length(models) < 1) {
+        plot.new()
+        text(0.5, 0.5, "比較するモデルを保存してください", cex = 1.2, col = "#95a5a6")
+        return()
+      }
+
+      index <- input$plot_index
+
+      # データ準備
+      plot_data <- data.frame(
+        model = names(models),
+        value = sapply(models, function(m) m$fit_measures[index]),
+        stringsAsFactors = FALSE
+      )
+      plot_data$model <- factor(plot_data$model, levels = plot_data$model)
+
+      # 基準値
+      thresholds <- list(
+        cfi = list(good = 0.95, acceptable = 0.90, direction = "higher"),
+        tli = list(good = 0.95, acceptable = 0.90, direction = "higher"),
+        rmsea = list(good = 0.05, acceptable = 0.08, direction = "lower"),
+        srmr = list(good = 0.05, acceptable = 0.08, direction = "lower"),
+        aic = list(good = NA, acceptable = NA, direction = "lower"),
+        bic = list(good = NA, acceptable = NA, direction = "lower")
+      )
+
+      threshold <- thresholds[[index]]
+
+      # プロット
+      p <- ggplot(plot_data, aes(x = model, y = value, fill = model)) +
+        geom_bar(stat = "identity", alpha = 0.8) +
+        geom_text(aes(label = sprintf("%.3f", value)), vjust = -0.5, size = 4) +
+        labs(
+          x = "モデル",
+          y = toupper(index),
+          title = paste0(toupper(index), " の比較")
+        ) +
+        theme_minimal() +
+        theme(
+          legend.position = "none",
+          plot.title = element_text(hjust = 0.5, face = "bold"),
+          axis.text.x = element_text(angle = 45, hjust = 1)
+        ) +
+        scale_fill_brewer(palette = "Set2")
+
+      # 基準線
+      if (input$show_threshold && !is.na(threshold$good)) {
+        p <- p +
+          geom_hline(yintercept = threshold$good, linetype = "dashed", color = "#18bc9c", size = 1) +
+          geom_hline(yintercept = threshold$acceptable, linetype = "dashed", color = "#f39c12", size = 1) +
+          annotate("text", x = Inf, y = threshold$good, label = "良好", hjust = 1.1, color = "#18bc9c") +
+          annotate("text", x = Inf, y = threshold$acceptable, label = "許容", hjust = 1.1, color = "#f39c12")
+      }
+
+      p
+    })
+
+    # --- パラメータ比較 ---
+    output$parameter_comparison <- renderDT({
+      model_1_name <- input$param_model_1
+      model_2_name <- input$param_model_2
+
+      if (is.null(model_1_name) || is.null(model_2_name)) {
+        return(NULL)
+      }
+
+      model_1 <- local_rv$saved_models[[model_1_name]]
+      model_2 <- local_rv$saved_models[[model_2_name]]
+
+      if (is.null(model_1) || is.null(model_2)) {
+        return(NULL)
+      }
+
+      # パラメータ取得
+      params_1 <- parameterEstimates(model_1$fit, standardized = TRUE)
+      params_2 <- parameterEstimates(model_2$fit, standardized = TRUE)
+
+      # パス名を作成
+      params_1$path <- paste(params_1$lhs, params_1$op, params_1$rhs)
+      params_2$path <- paste(params_2$lhs, params_2$op, params_2$rhs)
+
+      # マージ
+      comparison <- merge(
+        params_1[, c("path", "est", "std.all", "pvalue")],
+        params_2[, c("path", "est", "std.all", "pvalue")],
+        by = "path",
+        all = TRUE,
+        suffixes = c("_1", "_2")
+      )
+
+      # 差分計算
+      comparison$diff_est <- comparison$est_2 - comparison$est_1
+      comparison$diff_std <- comparison$std.all_2 - comparison$std.all_1
+
+      # 列名を整理
+      result <- comparison %>%
+        select(
+          パス = path,
+          `推定値(M1)` = est_1,
+          `推定値(M2)` = est_2,
+          差分 = diff_est,
+          `標準化(M1)` = std.all_1,
+          `標準化(M2)` = std.all_2
+        )
+
+      datatable(
+        result,
+        options = list(
+          pageLength = 15,
+          scrollX = TRUE,
+          dom = 'Bfrtip',
+          buttons = c('copy', 'csv')
+        ),
+        extensions = 'Buttons',
+        rownames = FALSE
+      ) %>%
+        formatRound(columns = c("推定値(M1)", "推定値(M2)", "差分", "標準化(M1)", "標準化(M2)"), digits = 3)
+    })
+
+    # --- 比較表ダウンロード ---
+    output$download_comparison <- downloadHandler(
+      filename = function() {
+        paste0("model_comparison_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+      },
+      content = function(file) {
+        models <- local_rv$saved_models
+
+        if (length(models) == 0) {
+          write.csv(data.frame(message = "保存されたモデルがありません"), file, row.names = FALSE)
+          return()
+        }
+
+        indices <- c("chisq", "df", "pvalue", "cfi", "tli", "rmsea", "srmr", "aic", "bic")
+
+        comparison_df <- data.frame(
+          Model = names(models),
+          stringsAsFactors = FALSE
+        )
+
+        for (idx in indices) {
+          values <- sapply(models, function(m) m$fit_measures[idx])
+          comparison_df[[toupper(idx)]] <- values
+        }
+
+        write.csv(comparison_df, file, row.names = FALSE)
+      }
+    )
+
+    # rv にモデルリストを公開
+    observe({
+      rv$saved_models <- local_rv$saved_models
+    })
+  })
+}
+
+# -----------------------------------------------------------------------------
 # ヘルプモジュール サーバー
 # -----------------------------------------------------------------------------
 help_server <- function(id) {

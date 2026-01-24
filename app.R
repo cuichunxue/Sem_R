@@ -105,6 +105,13 @@ ui <- page_navbar(
     diagram_ui("diagram")
   ),
 
+  # --- モデル比較タブ ---
+  nav_panel(
+    title = tags$span(tags$i(class = "fas fa-balance-scale me-1"), "モデル比較"),
+    value = "comparison_tab",
+    comparison_ui("comparison")
+  ),
+
   # --- ヘルプタブ ---
   nav_panel(
     title = tags$span(tags$i(class = "fas fa-question-circle me-1"), "ヘルプ"),
@@ -133,7 +140,8 @@ server <- function(input, output, session) {
     fit = NULL,
     fit_summary = NULL,
     estimation_complete = FALSE,
-    error_message = NULL
+    error_message = NULL,
+    saved_models = list()
   )
 
   # --- モジュールサーバー呼び出し ---
@@ -142,6 +150,7 @@ server <- function(input, output, session) {
   estimation_result <- estimation_server("estimation", rv)
   results_server("results", rv)
   diagram_server("diagram", rv)
+  comparison_server("comparison", rv)
   help_server("help")
 
   # --- グローバルエラーハンドリング ---

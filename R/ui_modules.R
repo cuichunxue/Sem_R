@@ -732,6 +732,221 @@ diagram_ui <- function(id) {
 }
 
 # -----------------------------------------------------------------------------
+# モデル比較タブ UI
+# -----------------------------------------------------------------------------
+comparison_ui <- function(id) {
+  ns <- NS(id)
+
+  layout_sidebar(
+    sidebar = sidebar(
+      width = 320,
+      title = tags$span(tags$i(class = "fas fa-save me-2"), "モデル管理"),
+
+      # 現在のモデルを保存
+      tags$div(
+        class = "section-title",
+        tags$i(class = "fas fa-plus-circle"),
+        "モデルを保存"
+      ),
+
+      textInput(
+        ns("model_name"),
+        "モデル名",
+        placeholder = "例: Model 1 (3因子)"
+      ),
+
+      textAreaInput(
+        ns("model_description"),
+        "説明（任意）",
+        rows = 2,
+        placeholder = "モデルの特徴やメモ"
+      ),
+
+      actionButton(
+        ns("save_model"),
+        tags$span(tags$i(class = "fas fa-save me-2"), "現在のモデルを保存"),
+        class = "btn-primary w-100 mt-2"
+      ),
+
+      hr(),
+
+      # 保存済みモデル一覧
+      tags$div(
+        class = "section-title",
+        tags$i(class = "fas fa-list"),
+        "保存済みモデル"
+      ),
+
+      uiOutput(ns("saved_models_list")),
+
+      hr(),
+
+      # 比較設定
+      tags$div(
+        class = "section-title",
+        tags$i(class = "fas fa-balance-scale"),
+        "比較設定"
+      ),
+
+      checkboxGroupInput(
+        ns("compare_indices"),
+        "表示する指標",
+        choices = c(
+          "χ²" = "chisq",
+          "df" = "df",
+          "CFI" = "cfi",
+          "TLI" = "tli",
+          "RMSEA" = "rmsea",
+          "SRMR" = "srmr",
+          "AIC" = "aic",
+          "BIC" = "bic"
+        ),
+        selected = c("chisq", "df", "cfi", "tli", "rmsea", "srmr", "aic", "bic")
+      ),
+
+      hr(),
+
+      # 一括操作
+      actionButton(
+        ns("clear_all_models"),
+        tags$span(tags$i(class = "fas fa-trash me-2"), "全モデルをクリア"),
+        class = "btn-outline-danger w-100"
+      )
+    ),
+
+    # メインコンテンツ
+    div(
+      # 比較テーブル
+      card(
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          tags$span(
+            tags$i(class = "fas fa-table me-2"),
+            "モデル適合度比較"
+          ),
+          downloadButton(
+            ns("download_comparison"),
+            "比較表をダウンロード",
+            class = "btn-sm btn-outline-light"
+          )
+        ),
+        card_body(
+          uiOutput(ns("no_models_message")),
+          DTOutput(ns("comparison_table"))
+        )
+      ),
+
+      # カイ二乗差検定
+      card(
+        card_header(
+          tags$span(
+            tags$i(class = "fas fa-calculator me-2"),
+            "ネストモデル比較（χ²差検定）"
+          )
+        ),
+        card_body(
+          fluidRow(
+            column(5,
+              selectInput(
+                ns("model_1"),
+                "モデル1（制約モデル）",
+                choices = NULL
+              )
+            ),
+            column(2,
+              tags$div(
+                class = "text-center pt-4",
+                tags$i(class = "fas fa-arrows-alt-h fa-2x text-muted")
+              )
+            ),
+            column(5,
+              selectInput(
+                ns("model_2"),
+                "モデル2（自由モデル）",
+                choices = NULL
+              )
+            )
+          ),
+          actionButton(
+            ns("run_chisq_diff"),
+            tags$span(tags$i(class = "fas fa-play me-2"), "χ²差検定を実行"),
+            class = "btn-info"
+          ),
+          hr(),
+          uiOutput(ns("chisq_diff_result"))
+        )
+      ),
+
+      # 適合度指標の視覚的比較
+      card(
+        card_header(
+          tags$span(
+            tags$i(class = "fas fa-chart-bar me-2"),
+            "適合度指標の視覚的比較"
+          )
+        ),
+        card_body(
+          fluidRow(
+            column(6,
+              selectInput(
+                ns("plot_index"),
+                "表示する指標",
+                choices = c(
+                  "CFI" = "cfi",
+                  "TLI" = "tli",
+                  "RMSEA" = "rmsea",
+                  "SRMR" = "srmr",
+                  "AIC" = "aic",
+                  "BIC" = "bic"
+                ),
+                selected = "cfi"
+              )
+            ),
+            column(6,
+              checkboxInput(
+                ns("show_threshold"),
+                "基準線を表示",
+                value = TRUE
+              )
+            )
+          ),
+          plotOutput(ns("comparison_plot"), height = "350px")
+        )
+      ),
+
+      # モデル詳細比較
+      card(
+        card_header(
+          tags$span(
+            tags$i(class = "fas fa-search-plus me-2"),
+            "パラメータ比較"
+          )
+        ),
+        card_body(
+          fluidRow(
+            column(6,
+              selectInput(
+                ns("param_model_1"),
+                "モデル1",
+                choices = NULL
+              )
+            ),
+            column(6,
+              selectInput(
+                ns("param_model_2"),
+                "モデル2",
+                choices = NULL
+              )
+            )
+          ),
+          DTOutput(ns("parameter_comparison"))
+        )
+      )
+    )
+  )
+}
+
+# -----------------------------------------------------------------------------
 # ヘルプタブ UI
 # -----------------------------------------------------------------------------
 help_ui <- function(id) {

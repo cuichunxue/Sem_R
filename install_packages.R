@@ -31,7 +31,10 @@ required_packages <- c(
   # レポート生成
   "knitr",
   "kableExtra",
-  "htmltools"
+  "htmltools",
+
+  # テスト
+  "testthat"
 )
 
 # インストール関数
