@@ -566,15 +566,34 @@ model_server <- function(id, rv) {
 
     # --- 因子名の同期 ---
     observe({
-      factors <- local_rv$factors
+      factors <- isolate(local_rv$factors)
       for (fid in names(factors)) {
+        # 因子名の同期
         name_input <- input[[paste0("factor_name_", fid)]]
-        if (!is.null(name_input) && name_input != "") {
+        if (!is.null(name_input) && name_input != "" && name_input != factors[[fid]]$name) {
           local_rv$factors[[fid]]$name <- name_input
         }
 
+        # 指標変数の同期（NULLの場合は既存値を保持）
         indicators_input <- input[[paste0("indicators_", fid)]]
-        local_rv$factors[[fid]]$indicators <- indicators_input
+        if (!is.null(indicators_input)) {
+          current_indicators <- factors[[fid]]$indicators
+          if (is.null(current_indicators)) current_indicators <- character(0)
+
+          # フィルターで非表示の変数も保持するため、既存の選択とマージ
+          all_vars <- if (!is.null(rv$data)) names(rv$data)[sapply(rv$data, is.numeric)] else character(0)
+          filter_text <- input$var_filter
+          if (!is.null(filter_text) && trimws(filter_text) != "") {
+            hidden_vars <- all_vars[!grepl(filter_text, all_vars, ignore.case = TRUE)]
+            hidden_selected <- intersect(current_indicators, hidden_vars)
+            indicators_input <- unique(c(indicators_input, hidden_selected))
+          }
+
+          # 値が変わった場合のみ更新（不要な再描画を防ぐ）
+          if (!setequal(indicators_input, current_indicators)) {
+            local_rv$factors[[fid]]$indicators <- indicators_input
+          }
+        }
       }
     })
 
