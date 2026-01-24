@@ -409,6 +409,60 @@ model_server <- function(id, rv) {
       showNotification("全ての因子をクリアしました", type = "message")
     })
 
+    # --- サンプルデータ自動設定ボタン表示 ---
+    output$auto_setup_button <- renderUI({
+      req(rv$data_name)
+
+      # サンプルデータの場合のみボタンを表示
+      if (rv$data_name == "HolzingerSwineford1939") {
+        actionButton(
+          ns("auto_setup_hs"),
+          tags$span(tags$i(class = "fas fa-magic me-1"), "HS1939を自動設定"),
+          class = "btn-sm btn-success w-100"
+        )
+      } else if (rv$data_name == "PoliticalDemocracy") {
+        actionButton(
+          ns("auto_setup_pd"),
+          tags$span(tags$i(class = "fas fa-magic me-1"), "PDを自動設定"),
+          class = "btn-sm btn-success w-100"
+        )
+      } else {
+        NULL
+      }
+    })
+
+    # --- HolzingerSwineford1939 自動設定 ---
+    observeEvent(input$auto_setup_hs, {
+      local_rv$factors <- list()
+      local_rv$factor_counter <- 3
+
+      local_rv$factors[["F1"]] <- list(name = "visual", indicators = c("x1", "x2", "x3"))
+      local_rv$factors[["F2"]] <- list(name = "textual", indicators = c("x4", "x5", "x6"))
+      local_rv$factors[["F3"]] <- list(name = "speed", indicators = c("x7", "x8", "x9"))
+
+      showNotification(
+        "HolzingerSwineford1939の典型的なCFAモデルを設定しました（visual, textual, speed）",
+        type = "message",
+        duration = 5
+      )
+    })
+
+    # --- PoliticalDemocracy 自動設定 ---
+    observeEvent(input$auto_setup_pd, {
+      local_rv$factors <- list()
+      local_rv$factor_counter <- 3
+
+      local_rv$factors[["F1"]] <- list(name = "ind60", indicators = c("x1", "x2", "x3"))
+      local_rv$factors[["F2"]] <- list(name = "dem60", indicators = c("y1", "y2", "y3", "y4"))
+      local_rv$factors[["F3"]] <- list(name = "dem65", indicators = c("y5", "y6", "y7", "y8"))
+
+      showNotification(
+        "PoliticalDemocracyの典型的なSEMモデルを設定しました（ind60→dem60→dem65）。構造パスも設定してください。",
+        type = "message",
+        duration = 8
+      )
+    })
+
     # --- 因子定義UI ---
     output$factor_definitions <- renderUI({
       if (is.null(rv$data)) {

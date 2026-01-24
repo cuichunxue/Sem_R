@@ -158,28 +158,35 @@ model_ui <- function(id) {
           # クイックスタートボタン
           tags$div(
             class = "mb-3 p-2 bg-light rounded",
-            tags$span(class = "small text-muted me-2",
-              tags$i(class = "fas fa-bolt me-1"), "クイックスタート:"
-            ),
-            actionButton(
-              ns("quick_2factor"),
-              "2因子CFA",
-              class = "btn-sm btn-outline-primary me-1"
-            ),
-            actionButton(
-              ns("quick_3factor"),
-              "3因子CFA",
-              class = "btn-sm btn-outline-primary me-1"
-            ),
-            actionButton(
-              ns("quick_mediation"),
-              "媒介分析",
-              class = "btn-sm btn-outline-info me-1"
-            ),
-            actionButton(
-              ns("clear_all_factors"),
-              tags$span(tags$i(class = "fas fa-eraser me-1"), "クリア"),
-              class = "btn-sm btn-outline-secondary"
+            fluidRow(
+              column(8,
+                tags$span(class = "small text-muted me-2",
+                  tags$i(class = "fas fa-bolt me-1"), "クイックスタート:"
+                ),
+                actionButton(
+                  ns("quick_2factor"),
+                  "2因子CFA",
+                  class = "btn-sm btn-outline-primary me-1"
+                ),
+                actionButton(
+                  ns("quick_3factor"),
+                  "3因子CFA",
+                  class = "btn-sm btn-outline-primary me-1"
+                ),
+                actionButton(
+                  ns("quick_mediation"),
+                  "媒介分析",
+                  class = "btn-sm btn-outline-info me-1"
+                ),
+                actionButton(
+                  ns("clear_all_factors"),
+                  tags$span(tags$i(class = "fas fa-eraser me-1"), "クリア"),
+                  class = "btn-sm btn-outline-secondary"
+                )
+              ),
+              column(4,
+                uiOutput(ns("auto_setup_button"))
+              )
             )
           ),
           fluidRow(
