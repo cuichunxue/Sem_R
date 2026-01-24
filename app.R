@@ -1,7 +1,15 @@
 # =============================================================================
 # lavaan SEM Analysis Web Application
 # 構造方程式モデリング解析Webアプリケーション
+# Production Version 1.0
 # =============================================================================
+
+# --- 設定 ---
+options(
+  shiny.maxRequestSize = 50 * 1024^2,  # 最大50MBのファイルアップロード
+  shiny.sanitize.errors = TRUE,         # エラーメッセージのサニタイズ
+  warn = 1                               # 警告を即座に表示
+)
 
 # --- パッケージ読み込み ---
 suppressPackageStartupMessages({
@@ -19,8 +27,7 @@ suppressPackageStartupMessages({
   library(readxl)
   library(haven)
   library(corrplot)
-  library(knitr)
-  library(kableExtra)
+  library(colourpicker)
   library(htmltools)
   library(waiter)
 })
@@ -30,9 +37,19 @@ source("R/utils.R")
 source("R/ui_modules.R")
 source("R/server_modules.R")
 
+# --- アプリケーション設定 ---
+APP_CONFIG <- list(
+  name = "SEM Analysis Tool",
+  version = "1.0.0",
+  max_variables = 200,        # 最大変数数
+
+  max_observations = 100000,  # 最大観測数
+  session_timeout = 30,       # セッションタイムアウト（分）
+  enable_logging = TRUE
+)
+
 # --- カスタムテーマ ---
 app_theme <- bs_theme(
-
   version = 5,
   bootswatch = "flatly",
   primary = "#2c3e50",
@@ -53,7 +70,7 @@ app_theme <- bs_theme(
 ui <- page_navbar(
   title = tags$span(
     tags$i(class = "fas fa-project-diagram me-2"),
-    "SEM Analysis Tool"
+    APP_CONFIG$name
   ),
   id = "main_nav",
   theme = app_theme,
@@ -61,30 +78,121 @@ ui <- page_navbar(
 
   # Head要素
   header = tags$head(
+    # メタタグ
+    tags$meta(charset = "UTF-8"),
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+    tags$meta(name = "description", content = "構造方程式モデリング(SEM)解析ツール - lavaan"),
+
+    # ファビコン
+    tags$link(rel = "icon", type = "image/svg+xml", href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>"),
+
+    # Font Awesome
     tags$link(
       rel = "stylesheet",
-      href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
+      crossorigin = "anonymous"
     ),
+
+    # カスタムCSS
     tags$style(HTML(custom_css())),
-    # クリップボードコピー用JavaScript
-    tags$script(HTML("
+    tags$link(rel = "stylesheet", href = "custom.css"),
+
+    # JavaScript
+    tags$script(HTML(sprintf("
+      // アプリケーション設定
+      var APP_CONFIG = %s;
+
+      // クリップボードコピー
       Shiny.addCustomMessageHandler('copyToClipboard', function(text) {
-        navigator.clipboard.writeText(text).then(function() {
-          console.log('Copied to clipboard');
-        }).catch(function(err) {
-          console.error('Failed to copy: ', err);
-          // フォールバック: 古いブラウザ対応
-          var textarea = document.createElement('textarea');
-          textarea.value = text;
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand('copy');
-          document.body.removeChild(textarea);
-        });
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function() {
+            console.log('Copied to clipboard');
+          }).catch(function(err) {
+            fallbackCopy(text);
+          });
+        } else {
+          fallbackCopy(text);
+        }
       });
-    ")),
+
+      function fallbackCopy(text) {
+        var textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+        } catch (err) {
+          console.error('Copy failed:', err);
+        }
+        document.body.removeChild(textarea);
+      }
+
+      // キーボードショートカット
+      document.addEventListener('keydown', function(e) {
+        // Ctrl+Enter: 分析実行
+        if (e.ctrlKey && e.key === 'Enter') {
+          var runBtn = document.querySelector('#estimation-run_analysis');
+          if (runBtn) runBtn.click();
+        }
+        // Ctrl+G: 構文生成
+        if (e.ctrlKey && e.key === 'g') {
+          e.preventDefault();
+          var genBtn = document.querySelector('#model-generate_syntax');
+          if (genBtn) genBtn.click();
+        }
+      });
+
+      // セッション監視
+      var lastActivity = Date.now();
+      document.addEventListener('mousemove', function() { lastActivity = Date.now(); });
+      document.addEventListener('keypress', function() { lastActivity = Date.now(); });
+
+      setInterval(function() {
+        var inactive = (Date.now() - lastActivity) / 1000 / 60;
+        if (inactive > APP_CONFIG.session_timeout) {
+          Shiny.setInputValue('session_timeout', true, {priority: 'event'});
+        }
+      }, 60000);
+
+      // ページ離脱警告
+      window.addEventListener('beforeunload', function(e) {
+        if (Shiny.shinyapp.$inputValues['data-data_loaded']) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+
+      // エラーハンドリング
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        console.error('Error:', msg, 'at', url, lineNo);
+        return false;
+      };
+    ", jsonlite::toJSON(APP_CONFIG, auto_unbox = TRUE)))),
+
     useShinyjs(),
     useWaiter()
+  ),
+
+  # フッター
+  footer = tags$footer(
+    class = "bg-dark text-light py-2 mt-auto",
+    style = "font-size: 0.8rem;",
+    div(
+      class = "container-fluid d-flex justify-content-between",
+      tags$span(
+        paste0(APP_CONFIG$name, " v", APP_CONFIG$version),
+        " | Powered by ",
+        tags$a(href = "https://lavaan.ugent.be/", target = "_blank", class = "text-info", "lavaan"),
+        " ", packageVersion("lavaan")
+      ),
+      tags$span(
+        tags$kbd("Ctrl+Enter"), " 分析実行 | ",
+        tags$kbd("Ctrl+G"), " 構文生成"
+      )
+    )
   ),
 
   # --- データタブ ---
@@ -141,13 +249,29 @@ ui <- page_navbar(
   nav_item(
     tags$span(
       class = "navbar-text text-light",
-      tags$small("lavaan ", packageVersion("lavaan"))
+      id = "session_status",
+      tags$i(class = "fas fa-circle text-success me-1", style = "font-size: 0.6rem;"),
+      tags$small("接続中")
     )
   )
 )
 
 # --- サーバー定義 ---
 server <- function(input, output, session) {
+
+  # --- ログ関数 ---
+  log_event <- function(event, details = NULL) {
+    if (APP_CONFIG$enable_logging) {
+      timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+      msg <- paste0("[", timestamp, "] ", event)
+      if (!is.null(details)) {
+        msg <- paste0(msg, " - ", details)
+      }
+      message(msg)
+    }
+  }
+
+  log_event("Session started", session$token)
 
   # --- リアクティブ値 ---
   rv <- reactiveValues(
@@ -158,8 +282,29 @@ server <- function(input, output, session) {
     fit_summary = NULL,
     estimation_complete = FALSE,
     error_message = NULL,
-    saved_models = list()
+    error_help = NULL,
+    saved_models = list(),
+    session_start = Sys.time()
   )
+
+  # --- セッションタイムアウト処理 ---
+  observeEvent(input$session_timeout, {
+    showModal(modalDialog(
+      title = tags$span(tags$i(class = "fas fa-clock me-2"), "セッションタイムアウト"),
+      tags$p("長時間操作がなかったため、セッションがタイムアウトしました。"),
+      tags$p("ページを再読み込みして続行してください。"),
+      footer = actionButton("reload_page", "再読み込み", class = "btn-primary",
+                           onclick = "location.reload();"),
+      easyClose = FALSE
+    ))
+  })
+
+  # --- セッション終了時のクリーンアップ ---
+  session$onSessionEnded(function() {
+    log_event("Session ended", session$token)
+    # メモリ解放
+    gc()
+  })
 
   # --- モジュールサーバー呼び出し ---
   data_result <- data_server("data", rv)
@@ -170,18 +315,50 @@ server <- function(input, output, session) {
   comparison_server("comparison", rv)
   help_server("help")
 
+  # --- データサイズチェック ---
+  observe({
+    req(rv$data)
+
+    n_obs <- nrow(rv$data)
+    n_vars <- ncol(rv$data)
+
+    if (n_obs > APP_CONFIG$max_observations) {
+      showNotification(
+        paste0("データの観測数(", format(n_obs, big.mark = ","),
+               ")が上限(", format(APP_CONFIG$max_observations, big.mark = ","),
+               ")を超えています。処理が遅くなる可能性があります。"),
+        type = "warning",
+        duration = 10
+      )
+    }
+
+    if (n_vars > APP_CONFIG$max_variables) {
+      showNotification(
+        paste0("変数数(", n_vars, ")が上限(", APP_CONFIG$max_variables,
+               ")を超えています。変数を選択してください。"),
+        type = "warning",
+        duration = 10
+      )
+    }
+
+    log_event("Data loaded", paste0(n_obs, " obs x ", n_vars, " vars"))
+  })
+
   # --- グローバルエラーハンドリング ---
   observe({
-    if (!is.null(rv$error_message)) {
-      showNotification(
-        rv$error_message,
-        type = "error",
-        duration = 8
-      )
-      rv$error_message <- NULL
+    if (!is.null(rv$error_message) && rv$error_message != "") {
+      log_event("Error", rv$error_message)
     }
   })
 }
 
 # --- アプリケーション起動 ---
-shinyApp(ui = ui, server = server)
+shinyApp(
+  ui = ui,
+  server = server,
+  options = list(
+    launch.browser = FALSE,
+    host = "0.0.0.0",
+    port = 3838
+  )
+)

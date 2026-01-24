@@ -640,3 +640,164 @@ generate_summary_text <- function(fit) {
 
   text
 }
+
+# =============================================================================
+# 入力バリデーション関数（製品版）
+# =============================================================================
+
+#' 変数名のサニタイズ
+#' @param names 変数名ベクトル
+#' @return サニタイズされた変数名
+sanitize_variable_names <- function(names) {
+  # 特殊文字を除去
+  sanitized <- gsub("[^a-zA-Z0-9_.]", "_", names)
+  # 数字で始まる場合はプレフィックスを追加
+
+  sanitized <- ifelse(grepl("^[0-9]", sanitized), paste0("V_", sanitized), sanitized)
+  # 空の名前を置換
+  sanitized <- ifelse(sanitized == "" | is.na(sanitized), paste0("var_", seq_along(sanitized)), sanitized)
+  # 重複を解消
+  make.unique(sanitized, sep = "_")
+}
+
+#' データフレームの検証
+#' @param data データフレーム
+#' @param max_rows 最大行数
+#' @param max_cols 最大列数
+#' @return リスト（valid, message, warnings）
+validate_dataframe <- function(data, max_rows = 100000, max_cols = 200) {
+  warnings <- character(0)
+
+  if (is.null(data)) {
+    return(list(valid = FALSE, message = "データがNULLです", warnings = warnings))
+  }
+
+  if (!is.data.frame(data)) {
+    return(list(valid = FALSE, message = "データフレーム形式ではありません", warnings = warnings))
+  }
+
+  if (nrow(data) == 0) {
+    return(list(valid = FALSE, message = "データが空です", warnings = warnings))
+  }
+
+  if (ncol(data) == 0) {
+    return(list(valid = FALSE, message = "変数がありません", warnings = warnings))
+  }
+
+  if (nrow(data) > max_rows) {
+    warnings <- c(warnings, paste0("行数が", format(max_rows, big.mark = ","), "を超えています"))
+  }
+
+  if (ncol(data) > max_cols) {
+    warnings <- c(warnings, paste0("列数が", max_cols, "を超えています"))
+  }
+
+  # 数値変数の確認
+  n_numeric <- sum(sapply(data, is.numeric))
+  if (n_numeric < 2) {
+    return(list(valid = FALSE, message = "SEM分析には最低2つの数値変数が必要です", warnings = warnings))
+  }
+
+  # 欠損値チェック
+  n_missing <- sum(is.na(data))
+  if (n_missing > 0) {
+    pct_missing <- round(n_missing / (nrow(data) * ncol(data)) * 100, 1)
+    warnings <- c(warnings, paste0("欠損値が", format(n_missing, big.mark = ","), "個 (", pct_missing, "%) あります"))
+  }
+
+  list(valid = TRUE, message = "データは有効です", warnings = warnings)
+}
+
+#' モデル識別性のチェック
+#' @param n_factors 因子数
+#' @param n_indicators 各因子の指標数ベクトル
+#' @param n_structural 構造パス数
+#' @return リスト（identified, df, message）
+check_model_identification <- function(n_factors, n_indicators, n_structural = 0) {
+  # 観測変数の総数
+  p <- sum(n_indicators)
+
+  # 観測される共分散/分散の数
+  n_observed <- p * (p + 1) / 2
+
+  # 推定パラメータ数の概算
+  # 因子負荷量（最初の指標は1に固定と仮定）
+  n_loadings <- sum(n_indicators) - n_factors
+  # 因子分散
+  n_factor_var <- n_factors
+  # 因子間共分散（構造パスがない場合）
+  n_factor_cov <- if (n_structural == 0) n_factors * (n_factors - 1) / 2 else 0
+  # 残差分散
+  n_residual_var <- p
+  # 構造パス
+  n_structural_params <- n_structural
+
+  n_estimated <- n_loadings + n_factor_var + n_factor_cov + n_residual_var + n_structural_params
+
+  df <- n_observed - n_estimated
+
+  if (df < 0) {
+    return(list(
+      identified = FALSE,
+      df = df,
+      message = paste0("モデルが識別不能です（自由度: ", df, "）。指標変数を追加するか、制約を追加してください。")
+    ))
+  } else if (df == 0) {
+    return(list(
+      identified = TRUE,
+      df = df,
+      message = "モデルはちょうど識別されています（飽和モデル）。適合度検定はできません。"
+    ))
+  } else {
+    return(list(
+      identified = TRUE,
+      df = df,
+      message = paste0("モデルは過剰識別されています（自由度: ", df, "）。")
+    ))
+  }
+}
+
+#' 安全なファイル読み込み
+#' @param file ファイルオブジェクト
+#' @param max_size_mb 最大ファイルサイズ（MB）
+#' @return データフレームまたはエラー
+safe_read_file <- function(file, max_size_mb = 50) {
+  # ファイルサイズチェック
+  file_size_mb <- file$size / 1024^2
+  if (file_size_mb > max_size_mb) {
+    stop(paste0("ファイルサイズ（", round(file_size_mb, 1), "MB）が上限（", max_size_mb, "MB）を超えています"))
+  }
+
+  # ファイル拡張子チェック
+  ext <- tolower(tools::file_ext(file$name))
+  allowed_extensions <- c("csv", "tsv", "txt", "xlsx", "xls", "sav", "sas7bdat", "dta", "rds")
+
+  if (!(ext %in% allowed_extensions)) {
+    stop(paste0("サポートされていないファイル形式です: .", ext,
+                "\n対応形式: ", paste(allowed_extensions, collapse = ", ")))
+  }
+
+  # データ読み込み
+  read_data_file(file)
+}
+
+#' 結果のエクスポート用フォーマット
+#' @param fit lavaanオブジェクト
+#' @param format 出力形式 ("html", "csv", "txt")
+#' @return フォーマットされた結果
+format_results_for_export <- function(fit, format = "txt") {
+  if (is.null(fit)) return(NULL)
+
+  fm <- fitMeasures(fit)
+  params <- parameterEstimates(fit, standardized = TRUE)
+
+  if (format == "txt") {
+    result <- capture.output(summary(fit, standardized = TRUE, fit.measures = TRUE, rsquare = TRUE))
+    paste(result, collapse = "\n")
+  } else if (format == "csv") {
+    params
+  } else {
+    # HTML形式はgenerate_html_reportを使用
+    NULL
+  }
+}
