@@ -144,134 +144,208 @@ data_ui <- function(id) {
 model_ui <- function(id) {
   ns <- NS(id)
 
-  layout_sidebar(
-    sidebar = sidebar(
-      width = 350,
-      title = tags$span(tags$i(class = "fas fa-puzzle-piece me-2"), "モデルテンプレート"),
+  div(
+    # 入力方法の選択
+    navset_card_pill(
+      id = ns("model_input_method"),
+      title = tags$span(tags$i(class = "fas fa-edit me-2"), "モデル定義方法"),
 
-      # テンプレート選択
-      radioGroupButtons(
-        ns("template_type"),
-        label = NULL,
-        choices = c(
-          "CFA" = "cfa",
-          "SEM" = "sem",
-          "パス" = "path",
-          "高度" = "advanced"
-        ),
-        status = "primary",
-        justified = TRUE,
-        size = "sm"
-      ),
+      # --- GUIビルダータブ ---
+      nav_panel(
+        title = tags$span(tags$i(class = "fas fa-mouse-pointer me-1"), "GUIビルダー"),
+        value = "gui",
+        card_body(
+          fluidRow(
+            # 左: 因子定義
+            column(6,
+              card(
+                card_header(
+                  class = "d-flex justify-content-between align-items-center py-2",
+                  tags$span(tags$i(class = "fas fa-layer-group me-2"), "因子定義（測定モデル）"),
+                  actionButton(
+                    ns("add_factor"),
+                    tags$span(tags$i(class = "fas fa-plus")),
+                    class = "btn-sm btn-success"
+                  )
+                ),
+                card_body(
+                  style = "max-height: 500px; overflow-y: auto;",
+                  uiOutput(ns("factor_definitions"))
+                )
+              )
+            ),
 
-      hr(),
+            # 右: 構造モデル
+            column(6,
+              card(
+                card_header(
+                  class = "py-2",
+                  tags$span(tags$i(class = "fas fa-arrows-alt me-2"), "構造モデル（因子間の関係）")
+                ),
+                card_body(
+                  tags$div(
+                    class = "section-title mb-2",
+                    tags$i(class = "fas fa-arrow-right"),
+                    "回帰パス（→）"
+                  ),
+                  uiOutput(ns("structural_paths")),
 
-      uiOutput(ns("template_cards")),
+                  hr(),
 
-      hr(),
+                  tags$div(
+                    class = "section-title mb-2",
+                    tags$i(class = "fas fa-arrows-alt-h"),
+                    "共分散（↔）"
+                  ),
+                  uiOutput(ns("covariance_paths"))
+                )
+              ),
 
-      # 変数リスト
-      conditionalPanel(
-        condition = "true",
-        tags$div(
-          class = "section-title",
-          tags$i(class = "fas fa-list"),
-          "利用可能な変数"
-        ),
-        uiOutput(ns("variable_list"))
-      )
-    ),
-
-    # メインコンテンツ
-    card(
-      card_header(
-        class = "d-flex justify-content-between align-items-center",
-        tags$span(
-          tags$i(class = "fas fa-code me-2"),
-          "lavaan モデル構文"
-        ),
-        tags$div(
-          actionButton(
-            ns("validate_syntax"),
-            tags$span(tags$i(class = "fas fa-check me-1"), "構文チェック"),
-            class = "btn-sm btn-outline-light me-2"
+              # 生成ボタン
+              actionButton(
+                ns("generate_syntax"),
+                tags$span(tags$i(class = "fas fa-magic me-2"), "構文を生成"),
+                class = "btn-primary btn-lg w-100 mt-3"
+              )
+            )
           ),
-          actionButton(
-            ns("clear_syntax"),
-            tags$span(tags$i(class = "fas fa-eraser me-1"), "クリア"),
-            class = "btn-sm btn-outline-light"
+
+          hr(),
+
+          # 生成されたプレビュー
+          card(
+            card_header(
+              class = "py-2",
+              tags$span(tags$i(class = "fas fa-eye me-2"), "生成された構文プレビュー")
+            ),
+            card_body(
+              verbatimTextOutput(ns("generated_preview"))
+            )
           )
         )
       ),
-      card_body(
-        # 構文エディタ
-        tags$textarea(
-          id = ns("model_syntax"),
-          class = "form-control syntax-editor",
-          rows = 15,
-          placeholder = "# ここにlavaanモデル構文を入力してください\n# または左のテンプレートを選択してください\n\n# 例: 確認的因子分析\n# Factor1 =~ x1 + x2 + x3\n# Factor2 =~ x4 + x5 + x6"
-        ),
 
-        # 構文バリデーション結果
-        uiOutput(ns("syntax_validation")),
-
-        hr(),
-
-        # 構文ヘルプ
-        card(
-          card_header(
-            class = "card-header-secondary py-2",
-            tags$span(
-              tags$i(class = "fas fa-lightbulb me-2"),
-              "lavaan 構文リファレンス"
-            )
-          ),
-          card_body(
-            class = "small",
-            tags$table(
-              class = "table table-sm table-bordered mb-0",
-              tags$thead(
-                tags$tr(
-                  tags$th("演算子"),
-                  tags$th("意味"),
-                  tags$th("例")
-                )
+      # --- テンプレートタブ ---
+      nav_panel(
+        title = tags$span(tags$i(class = "fas fa-copy me-1"), "テンプレート"),
+        value = "template",
+        card_body(
+          fluidRow(
+            column(4,
+              # テンプレート選択
+              radioGroupButtons(
+                ns("template_type"),
+                label = "カテゴリ",
+                choices = c(
+                  "CFA" = "cfa",
+                  "SEM" = "sem",
+                  "パス" = "path",
+                  "高度" = "advanced"
+                ),
+                status = "primary",
+                justified = TRUE,
+                size = "sm"
               ),
-              tags$tbody(
-                tags$tr(
-                  tags$td(tags$code("=~")),
-                  tags$td("測定（因子負荷）"),
-                  tags$td(tags$code("F1 =~ x1 + x2 + x3"))
-                ),
-                tags$tr(
-                  tags$td(tags$code("~")),
-                  tags$td("回帰"),
-                  tags$td(tags$code("y ~ x1 + x2"))
-                ),
-                tags$tr(
-                  tags$td(tags$code("~~")),
-                  tags$td("共分散/分散"),
-                  tags$td(tags$code("x1 ~~ x2"))
-                ),
-                tags$tr(
-                  tags$td(tags$code("~1")),
-                  tags$td("切片"),
-                  tags$td(tags$code("x1 ~ 1"))
-                ),
-                tags$tr(
-                  tags$td(tags$code(":=")),
-                  tags$td("定義されたパラメータ"),
-                  tags$td(tags$code("ind := a*b"))
-                ),
-                tags$tr(
-                  tags$td(tags$code("*")),
-                  tags$td("ラベル/制約"),
-                  tags$td(tags$code("F1 =~ a*x1 + a*x2"))
-                )
+              hr(),
+              uiOutput(ns("template_cards"))
+            ),
+            column(8,
+              tags$div(
+                class = "section-title mb-2",
+                tags$i(class = "fas fa-list"),
+                "利用可能な変数（クリックで追加）"
+              ),
+              uiOutput(ns("variable_chips")),
+              hr(),
+              tags$textarea(
+                id = ns("template_syntax"),
+                class = "form-control syntax-editor",
+                rows = 12,
+                placeholder = "左のテンプレートを選択するか、直接入力してください"
+              ),
+              actionButton(
+                ns("apply_template"),
+                tags$span(tags$i(class = "fas fa-check me-2"), "この構文を使用"),
+                class = "btn-primary w-100 mt-3"
               )
             )
           )
         )
+      ),
+
+      # --- 直接入力タブ ---
+      nav_panel(
+        title = tags$span(tags$i(class = "fas fa-keyboard me-1"), "直接入力"),
+        value = "direct",
+        card_body(
+          fluidRow(
+            column(8,
+              tags$textarea(
+                id = ns("model_syntax"),
+                class = "form-control syntax-editor",
+                rows = 18,
+                placeholder = "# lavaan モデル構文を直接入力\n\n# 確認的因子分析の例:\n# Factor1 =~ x1 + x2 + x3\n# Factor2 =~ x4 + x5 + x6\n\n# 回帰の例:\n# y ~ x1 + x2\n\n# 共分散の例:\n# x1 ~~ x2"
+              ),
+              fluidRow(
+                column(6,
+                  actionButton(
+                    ns("validate_syntax"),
+                    tags$span(tags$i(class = "fas fa-check me-2"), "構文チェック"),
+                    class = "btn-outline-primary w-100 mt-2"
+                  )
+                ),
+                column(6,
+                  actionButton(
+                    ns("clear_syntax"),
+                    tags$span(tags$i(class = "fas fa-eraser me-2"), "クリア"),
+                    class = "btn-outline-secondary w-100 mt-2"
+                  )
+                )
+              ),
+              uiOutput(ns("syntax_validation"))
+            ),
+            column(4,
+              card(
+                card_header(class = "py-2", "構文リファレンス"),
+                card_body(
+                  class = "small",
+                  tags$table(
+                    class = "table table-sm table-bordered mb-0",
+                    tags$tbody(
+                      tags$tr(tags$td(tags$code("=~")), tags$td("測定")),
+                      tags$tr(tags$td(tags$code("~")), tags$td("回帰")),
+                      tags$tr(tags$td(tags$code("~~")), tags$td("共分散")),
+                      tags$tr(tags$td(tags$code("~1")), tags$td("切片")),
+                      tags$tr(tags$td(tags$code(":=")), tags$td("定義パラメータ")),
+                      tags$tr(tags$td(tags$code("*")), tags$td("ラベル"))
+                    )
+                  )
+                )
+              ),
+              tags$div(
+                class = "section-title mt-3 mb-2",
+                tags$i(class = "fas fa-list"),
+                "変数リスト"
+              ),
+              uiOutput(ns("variable_list"))
+            )
+          )
+        )
+      )
+    ),
+
+    # 現在のモデル構文表示
+    card(
+      class = "mt-3",
+      card_header(
+        class = "d-flex justify-content-between align-items-center",
+        tags$span(tags$i(class = "fas fa-code me-2"), "現在のモデル構文"),
+        uiOutput(ns("syntax_status_badge"))
+      ),
+      card_body(
+        verbatimTextOutput(ns("current_syntax_display")),
+        tags$p(class = "text-muted small mt-2",
+          "この構文が「推定設定」タブで使用されます。")
       )
     )
   )

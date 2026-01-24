@@ -339,6 +339,276 @@ model_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # --- ローカルリアクティブ値 ---
+    local_rv <- reactiveValues(
+      factors = list(),
+      factor_counter = 0,
+      generated_syntax = ""
+    )
+
+    # =========================================================================
+    # GUIビルダー機能
+    # =========================================================================
+
+    # --- 因子追加 ---
+    observeEvent(input$add_factor, {
+      local_rv$factor_counter <- local_rv$factor_counter + 1
+      factor_id <- paste0("F", local_rv$factor_counter)
+
+      local_rv$factors[[factor_id]] <- list(
+        name = factor_id,
+        indicators = character(0)
+      )
+    })
+
+    # --- 因子定義UI ---
+    output$factor_definitions <- renderUI({
+      if (is.null(rv$data)) {
+        return(tags$div(
+          class = "alert alert-info",
+          tags$i(class = "fas fa-info-circle me-2"),
+          "まずデータを読み込んでください"
+        ))
+      }
+
+      factors <- local_rv$factors
+      vars <- names(rv$data)[sapply(rv$data, is.numeric)]
+
+      if (length(factors) == 0) {
+        return(tags$div(
+          class = "text-center text-muted py-4",
+          tags$i(class = "fas fa-plus-circle fa-2x mb-2"),
+          tags$p("「+」ボタンで因子を追加してください")
+        ))
+      }
+
+      tagList(
+        lapply(names(factors), function(fid) {
+          f <- factors[[fid]]
+          tags$div(
+            class = "card mb-3 factor-card",
+            style = "border-left: 4px solid #3498db;",
+            tags$div(
+              class = "card-body py-2 px-3",
+              # 因子名入力
+              fluidRow(
+                column(8,
+                  textInput(
+                    ns(paste0("factor_name_", fid)),
+                    NULL,
+                    value = f$name,
+                    placeholder = "因子名"
+                  )
+                ),
+                column(4,
+                  actionButton(
+                    ns(paste0("delete_factor_", fid)),
+                    tags$i(class = "fas fa-trash"),
+                    class = "btn-sm btn-outline-danger w-100",
+                    onclick = sprintf(
+                      "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+                      ns("delete_factor"), fid
+                    )
+                  )
+                )
+              ),
+              # 指標変数選択
+              tags$label(class = "small text-muted", "指標変数を選択:"),
+              checkboxGroupInput(
+                ns(paste0("indicators_", fid)),
+                label = NULL,
+                choices = vars,
+                selected = f$indicators,
+                inline = TRUE
+              )
+            )
+          )
+        })
+      )
+    })
+
+    # --- 因子削除 ---
+    observeEvent(input$delete_factor, {
+      fid <- input$delete_factor
+      if (fid %in% names(local_rv$factors)) {
+        local_rv$factors[[fid]] <- NULL
+      }
+    })
+
+    # --- 因子名の同期 ---
+    observe({
+      factors <- local_rv$factors
+      for (fid in names(factors)) {
+        name_input <- input[[paste0("factor_name_", fid)]]
+        if (!is.null(name_input) && name_input != "") {
+          local_rv$factors[[fid]]$name <- name_input
+        }
+
+        indicators_input <- input[[paste0("indicators_", fid)]]
+        local_rv$factors[[fid]]$indicators <- indicators_input
+      }
+    })
+
+    # --- 構造モデル（回帰パス）UI ---
+    output$structural_paths <- renderUI({
+      factors <- local_rv$factors
+
+      if (length(factors) < 2) {
+        return(tags$p(class = "text-muted small", "2つ以上の因子を定義すると、回帰パスを設定できます"))
+      }
+
+      factor_names <- sapply(factors, function(f) f$name)
+
+      # 全ての組み合わせを生成
+      pairs <- expand.grid(from = factor_names, to = factor_names, stringsAsFactors = FALSE)
+      pairs <- pairs[pairs$from != pairs$to, ]
+
+      tagList(
+        lapply(1:nrow(pairs), function(i) {
+          from <- pairs$from[i]
+          to <- pairs$to[i]
+          checkbox_id <- paste0("reg_", gsub("[^a-zA-Z0-9]", "_", from), "_", gsub("[^a-zA-Z0-9]", "_", to))
+
+          tags$div(
+            class = "form-check",
+            tags$input(
+              type = "checkbox",
+              class = "form-check-input",
+              id = ns(checkbox_id)
+            ),
+            tags$label(
+              class = "form-check-label",
+              `for` = ns(checkbox_id),
+              tags$code(to), " ← ", tags$code(from)
+            )
+          )
+        })
+      )
+    })
+
+    # --- 共分散パスUI ---
+    output$covariance_paths <- renderUI({
+      factors <- local_rv$factors
+
+      if (length(factors) < 2) {
+        return(tags$p(class = "text-muted small", "2つ以上の因子を定義すると、共分散を設定できます"))
+      }
+
+      factor_names <- sapply(factors, function(f) f$name)
+
+      # 共分散は対称なので、半分の組み合わせ
+      pairs <- combn(factor_names, 2, simplify = FALSE)
+
+      tags$div(
+        tags$p(class = "small text-muted", "※ 因子間の共分散はデフォルトで推定されます"),
+        lapply(pairs, function(pair) {
+          checkbox_id <- paste0("cov_", gsub("[^a-zA-Z0-9]", "_", pair[1]), "_", gsub("[^a-zA-Z0-9]", "_", pair[2]))
+
+          tags$div(
+            class = "form-check",
+            tags$input(
+              type = "checkbox",
+              class = "form-check-input",
+              id = ns(checkbox_id),
+              checked = NA  # デフォルトでチェックしない（自動推定されるため）
+            ),
+            tags$label(
+              class = "form-check-label",
+              `for` = ns(checkbox_id),
+              tags$code(pair[1]), " ↔ ", tags$code(pair[2]), " を0に固定"
+            )
+          )
+        })
+      )
+    })
+
+    # --- 構文生成 ---
+    observeEvent(input$generate_syntax, {
+      factors <- local_rv$factors
+
+      if (length(factors) == 0) {
+        showNotification("因子を1つ以上定義してください", type = "error")
+        return()
+      }
+
+      # 測定モデル生成
+      measurement_lines <- character(0)
+      for (f in factors) {
+        if (length(f$indicators) > 0) {
+          line <- paste0(f$name, " =~ ", paste(f$indicators, collapse = " + "))
+          measurement_lines <- c(measurement_lines, line)
+        }
+      }
+
+      if (length(measurement_lines) == 0) {
+        showNotification("各因子に少なくとも1つの指標変数を選択してください", type = "error")
+        return()
+      }
+
+      # 構造モデル（回帰）生成
+      structural_lines <- character(0)
+      factor_names <- sapply(factors, function(f) f$name)
+      if (length(factor_names) >= 2) {
+        pairs <- expand.grid(from = factor_names, to = factor_names, stringsAsFactors = FALSE)
+        pairs <- pairs[pairs$from != pairs$to, ]
+
+        for (i in 1:nrow(pairs)) {
+          from <- pairs$from[i]
+          to <- pairs$to[i]
+          checkbox_id <- paste0("reg_", gsub("[^a-zA-Z0-9]", "_", from), "_", gsub("[^a-zA-Z0-9]", "_", to))
+          if (isTRUE(input[[checkbox_id]])) {
+            structural_lines <- c(structural_lines, paste0(to, " ~ ", from))
+          }
+        }
+      }
+
+      # 共分散制約（0に固定）生成
+      covariance_lines <- character(0)
+      if (length(factor_names) >= 2) {
+        pairs <- combn(factor_names, 2, simplify = FALSE)
+        for (pair in pairs) {
+          checkbox_id <- paste0("cov_", gsub("[^a-zA-Z0-9]", "_", pair[1]), "_", gsub("[^a-zA-Z0-9]", "_", pair[2]))
+          if (isTRUE(input[[checkbox_id]])) {
+            covariance_lines <- c(covariance_lines, paste0(pair[1], " ~~ 0*", pair[2]))
+          }
+        }
+      }
+
+      # 構文を組み立て
+      syntax_parts <- character(0)
+
+      syntax_parts <- c(syntax_parts, "# 測定モデル")
+      syntax_parts <- c(syntax_parts, measurement_lines)
+
+      if (length(structural_lines) > 0) {
+        syntax_parts <- c(syntax_parts, "", "# 構造モデル")
+        syntax_parts <- c(syntax_parts, structural_lines)
+      }
+
+      if (length(covariance_lines) > 0) {
+        syntax_parts <- c(syntax_parts, "", "# 共分散制約")
+        syntax_parts <- c(syntax_parts, covariance_lines)
+      }
+
+      generated <- paste(syntax_parts, collapse = "\n")
+      local_rv$generated_syntax <- generated
+      rv$model_syntax <- generated
+
+      showNotification("構文を生成しました！", type = "message")
+    })
+
+    # --- 生成プレビュー ---
+    output$generated_preview <- renderText({
+      if (local_rv$generated_syntax == "") {
+        return("（ここに生成された構文が表示されます）")
+      }
+      local_rv$generated_syntax
+    })
+
+    # =========================================================================
+    # テンプレート機能
+    # =========================================================================
+
     # --- テンプレートカード ---
     output$template_cards <- renderUI({
       templates <- switch(
@@ -373,42 +643,68 @@ model_server <- function(id, rv) {
     observeEvent(input$select_template, {
       template <- model_templates[[input$select_template]]
       if (!is.null(template)) {
-        updateTextAreaInput(
-          session,
-          "model_syntax",
-          value = template$syntax
-        )
-        rv$model_syntax <- template$syntax
+        updateTextAreaInput(session, "template_syntax", value = template$syntax)
       }
     })
 
-    # --- 変数リスト ---
-    output$variable_list <- renderUI({
+    # --- テンプレート適用 ---
+    observeEvent(input$apply_template, {
+      syntax <- input$template_syntax
+      if (!is.null(syntax) && trimws(syntax) != "") {
+        rv$model_syntax <- syntax
+        showNotification("モデル構文を設定しました", type = "message")
+      }
+    })
+
+    # --- 変数チップス（クリックで追加）---
+    output$variable_chips <- renderUI({
       if (is.null(rv$data)) {
         return(tags$p(class = "text-muted", "データを読み込んでください"))
       }
 
-      vars <- names(rv$data)
-      numeric_vars <- vars[sapply(rv$data, is.numeric)]
+      vars <- names(rv$data)[sapply(rv$data, is.numeric)]
+
+      tags$div(
+        class = "d-flex flex-wrap gap-1",
+        lapply(vars, function(v) {
+          tags$span(
+            class = "badge bg-secondary",
+            style = "cursor: pointer; font-size: 0.85rem;",
+            onclick = sprintf(
+              "var ta = document.getElementById('%s'); var pos = ta.selectionStart; var val = ta.value; ta.value = val.substring(0, pos) + '%s' + val.substring(pos); ta.focus();",
+              ns("template_syntax"), v
+            ),
+            v
+          )
+        })
+      )
+    })
+
+    # =========================================================================
+    # 直接入力機能
+    # =========================================================================
+
+    # --- 変数リスト ---
+    output$variable_list <- renderUI({
+      if (is.null(rv$data)) {
+        return(tags$p(class = "text-muted small", "データを読み込んでください"))
+      }
+
+      vars <- names(rv$data)[sapply(rv$data, is.numeric)]
 
       tags$div(
         style = "max-height: 200px; overflow-y: auto;",
-        tags$ul(
-          class = "list-unstyled mb-0",
-          lapply(numeric_vars, function(v) {
-            tags$li(
-              class = "py-1 px-2 rounded",
-              style = "cursor: pointer; transition: background 0.2s;",
-              onmouseover = "this.style.background='#e8f4fc'",
-              onmouseout = "this.style.background='transparent'",
-              onclick = sprintf(
-                "var ta = document.getElementById('%s'); ta.value += ' + %s'; ta.focus();",
-                ns("model_syntax"), v
-              ),
-              tags$code(v)
-            )
-          })
-        )
+        lapply(vars, function(v) {
+          tags$div(
+            class = "badge bg-light text-dark me-1 mb-1",
+            style = "cursor: pointer;",
+            onclick = sprintf(
+              "var ta = document.getElementById('%s'); ta.value += ' + %s'; ta.focus();",
+              ns("model_syntax"), v
+            ),
+            v
+          )
+        })
       )
     })
 
@@ -420,13 +716,13 @@ model_server <- function(id, rv) {
       output$syntax_validation <- renderUI({
         if (result$valid) {
           tags$div(
-            class = "alert alert-success mt-3",
+            class = "alert alert-success mt-3 py-2",
             tags$i(class = "fas fa-check-circle me-2"),
             result$message
           )
         } else {
           tags$div(
-            class = "alert alert-danger mt-3",
+            class = "alert alert-danger mt-3 py-2",
             tags$i(class = "fas fa-times-circle me-2"),
             result$message
           )
@@ -441,9 +737,35 @@ model_server <- function(id, rv) {
       output$syntax_validation <- renderUI(NULL)
     })
 
-    # --- 構文の同期 ---
+    # --- 直接入力の同期 ---
     observe({
-      rv$model_syntax <- input$model_syntax
+      if (!is.null(input$model_syntax) && trimws(input$model_syntax) != "") {
+        rv$model_syntax <- input$model_syntax
+      }
+    })
+
+    # =========================================================================
+    # 共通: 現在の構文表示
+    # =========================================================================
+
+    output$current_syntax_display <- renderText({
+      if (is.null(rv$model_syntax) || trimws(rv$model_syntax) == "") {
+        return("（モデル構文が設定されていません）")
+      }
+      rv$model_syntax
+    })
+
+    output$syntax_status_badge <- renderUI({
+      if (is.null(rv$model_syntax) || trimws(rv$model_syntax) == "") {
+        tags$span(class = "badge bg-warning", "未設定")
+      } else {
+        result <- validate_model_syntax(rv$model_syntax)
+        if (result$valid) {
+          tags$span(class = "badge bg-success", "有効")
+        } else {
+          tags$span(class = "badge bg-danger", "エラー")
+        }
+      }
     })
 
     return(rv)
