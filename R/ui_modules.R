@@ -274,14 +274,42 @@ model_ui <- function(id) {
 
           hr(),
 
-          # 生成されたプレビュー
-          card(
-            card_header(
-              class = "py-2",
-              tags$span(tags$i(class = "fas fa-eye me-2"), "生成された構文プレビュー")
+          # モデルサマリーと生成されたプレビュー
+          fluidRow(
+            column(4,
+              card(
+                card_header(
+                  class = "py-2 bg-light",
+                  tags$span(tags$i(class = "fas fa-chart-pie me-2"), "モデルサマリー")
+                ),
+                card_body(
+                  uiOutput(ns("model_summary"))
+                )
+              )
             ),
-            card_body(
-              verbatimTextOutput(ns("generated_preview"))
+            column(8,
+              card(
+                card_header(
+                  class = "py-2",
+                  tags$span(tags$i(class = "fas fa-code me-2"), "生成された構文プレビュー")
+                ),
+                card_body(
+                  verbatimTextOutput(ns("generated_preview")),
+                  tags$div(
+                    class = "mt-2 d-flex justify-content-end",
+                    actionButton(
+                      ns("copy_syntax"),
+                      tags$span(tags$i(class = "fas fa-copy me-1"), "コピー"),
+                      class = "btn-sm btn-outline-secondary me-2"
+                    ),
+                    actionButton(
+                      ns("apply_generated"),
+                      tags$span(tags$i(class = "fas fa-check me-1"), "この構文を使用"),
+                      class = "btn-sm btn-success"
+                    )
+                  )
+                )
+              )
             )
           )
         )

@@ -668,6 +668,82 @@ model_server <- function(id, rv) {
       showNotification("構文を生成しました！", type = "message")
     })
 
+    # --- モデルサマリー表示 ---
+    output$model_summary <- renderUI({
+      factors <- local_rv$factors
+      structural <- input$structural_paths_selected
+      covariance <- input$covariance_paths_selected
+
+      n_factors <- length(factors)
+      n_indicators <- sum(sapply(factors, function(f) length(f$indicators)))
+      n_structural <- if (is.null(structural)) 0 else length(structural)
+      n_covariance <- if (is.null(covariance)) 0 else length(covariance)
+
+      if (n_factors == 0) {
+        return(tags$div(
+          class = "text-center text-muted py-3",
+          tags$i(class = "fas fa-info-circle fa-2x mb-2"),
+          tags$p("因子を追加してモデルを構築してください")
+        ))
+      }
+
+      # モデルタイプの判定
+      model_type <- if (n_structural > 0) {
+        if (n_factors == 3 && n_structural >= 2) "媒介分析（SEM）"
+        else "構造方程式モデル（SEM）"
+      } else {
+        if (n_factors == 1) "1因子確認的因子分析"
+        else paste0(n_factors, "因子確認的因子分析")
+      }
+
+      # パラメータ数の概算
+      n_loadings <- n_indicators
+      n_factor_var <- n_factors
+      n_residual_var <- n_indicators
+      n_factor_cov <- if (n_factors > 1) choose(n_factors, 2) - n_covariance else 0
+      total_params <- n_loadings + n_structural + n_factor_var + n_residual_var + n_factor_cov
+
+      tags$div(
+        tags$table(
+          class = "table table-sm table-borderless mb-2",
+          tags$tbody(
+            tags$tr(
+              tags$td(tags$i(class = "fas fa-tag me-2 text-primary")),
+              tags$td(tags$strong("モデルタイプ")),
+              tags$td(model_type)
+            ),
+            tags$tr(
+              tags$td(tags$i(class = "fas fa-layer-group me-2 text-info")),
+              tags$td("因子数"),
+              tags$td(n_factors)
+            ),
+            tags$tr(
+              tags$td(tags$i(class = "fas fa-th-list me-2 text-success")),
+              tags$td("指標変数"),
+              tags$td(n_indicators)
+            ),
+            tags$tr(
+              tags$td(tags$i(class = "fas fa-arrow-right me-2 text-warning")),
+              tags$td("回帰パス"),
+              tags$td(n_structural)
+            ),
+            tags$tr(
+              tags$td(tags$i(class = "fas fa-calculator me-2 text-secondary")),
+              tags$td("推定パラメータ"),
+              tags$td(paste0("約 ", total_params, " 個"))
+            )
+          )
+        ),
+        if (n_indicators < n_factors * 3) {
+          tags$div(
+            class = "small text-warning",
+            tags$i(class = "fas fa-exclamation-triangle me-1"),
+            "識別のため各因子に3+指標を推奨"
+          )
+        }
+      )
+    })
+
     # --- 因子バリデーション表示 ---
     output$factor_validation <- renderUI({
       factors <- local_rv$factors
@@ -704,6 +780,27 @@ model_server <- function(id, rv) {
         return("（ここに生成された構文が表示されます）")
       }
       local_rv$generated_syntax
+    })
+
+    # --- 構文をコピー（クリップボードにコピーするためのJSを発火） ---
+    observeEvent(input$copy_syntax, {
+      if (local_rv$generated_syntax != "") {
+        # JavaScript経由でクリップボードにコピー
+        session$sendCustomMessage("copyToClipboard", local_rv$generated_syntax)
+        showNotification("構文をクリップボードにコピーしました", type = "message")
+      } else {
+        showNotification("コピーする構文がありません。まず「構文を生成」をクリックしてください。", type = "warning")
+      }
+    })
+
+    # --- 生成した構文を適用 ---
+    observeEvent(input$apply_generated, {
+      if (local_rv$generated_syntax != "") {
+        rv$model_syntax <- local_rv$generated_syntax
+        showNotification("構文を適用しました。「推定設定」タブで分析を実行できます。", type = "message")
+      } else {
+        showNotification("適用する構文がありません。まず「構文を生成」をクリックしてください。", type = "warning")
+      }
     })
 
     # =========================================================================

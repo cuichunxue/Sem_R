@@ -66,6 +66,23 @@ ui <- page_navbar(
       href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     ),
     tags$style(HTML(custom_css())),
+    # クリップボードコピー用JavaScript
+    tags$script(HTML("
+      Shiny.addCustomMessageHandler('copyToClipboard', function(text) {
+        navigator.clipboard.writeText(text).then(function() {
+          console.log('Copied to clipboard');
+        }).catch(function(err) {
+          console.error('Failed to copy: ', err);
+          // フォールバック: 古いブラウザ対応
+          var textarea = document.createElement('textarea');
+          textarea.value = text;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        });
+      });
+    ")),
     useShinyjs(),
     useWaiter()
   ),
