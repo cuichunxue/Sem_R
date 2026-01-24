@@ -361,6 +361,54 @@ model_server <- function(id, rv) {
       )
     })
 
+    # --- クイックスタート: 2因子CFA ---
+    observeEvent(input$quick_2factor, {
+      local_rv$factors <- list()
+      local_rv$factor_counter <- 2
+
+      local_rv$factors[["F1"]] <- list(name = "Factor1", indicators = character(0))
+      local_rv$factors[["F2"]] <- list(name = "Factor2", indicators = character(0))
+
+      showNotification("2因子CFAモデルを作成しました。各因子に指標変数を選択してください。", type = "message")
+    })
+
+    # --- クイックスタート: 3因子CFA ---
+    observeEvent(input$quick_3factor, {
+      local_rv$factors <- list()
+      local_rv$factor_counter <- 3
+
+      local_rv$factors[["F1"]] <- list(name = "Factor1", indicators = character(0))
+      local_rv$factors[["F2"]] <- list(name = "Factor2", indicators = character(0))
+      local_rv$factors[["F3"]] <- list(name = "Factor3", indicators = character(0))
+
+      showNotification("3因子CFAモデルを作成しました。各因子に指標変数を選択してください。", type = "message")
+    })
+
+    # --- クイックスタート: 媒介分析 ---
+    observeEvent(input$quick_mediation, {
+      local_rv$factors <- list()
+      local_rv$factor_counter <- 3
+
+      local_rv$factors[["F1"]] <- list(name = "X", indicators = character(0))
+      local_rv$factors[["F2"]] <- list(name = "M", indicators = character(0))
+      local_rv$factors[["F3"]] <- list(name = "Y", indicators = character(0))
+
+      showNotification(
+        "媒介分析モデル（X→M→Y）を作成しました。各因子に指標変数を選択し、構造パスでM←XとY←M、Y←Xを設定してください。",
+        type = "message",
+        duration = 8
+      )
+    })
+
+    # --- 全因子クリア ---
+    observeEvent(input$clear_all_factors, {
+      local_rv$factors <- list()
+      local_rv$factor_counter <- 0
+      local_rv$generated_syntax <- ""
+
+      showNotification("全ての因子をクリアしました", type = "message")
+    })
+
     # --- 因子定義UI ---
     output$factor_definitions <- renderUI({
       if (is.null(rv$data)) {
@@ -532,9 +580,18 @@ model_server <- function(id, rv) {
 
       # 測定モデル生成
       measurement_lines <- character(0)
+      equal_loadings <- isTRUE(input$equal_loadings)
+
       for (f in factors) {
         if (length(f$indicators) > 0) {
-          line <- paste0(f$name, " =~ ", paste(f$indicators, collapse = " + "))
+          if (equal_loadings && length(f$indicators) > 1) {
+            # 等値制約: 全ての負荷量に同じラベルをつける
+            label <- paste0("l_", gsub("[^a-zA-Z0-9]", "", f$name))
+            labeled_indicators <- paste0(label, "*", f$indicators)
+            line <- paste0(f$name, " =~ ", paste(labeled_indicators, collapse = " + "))
+          } else {
+            line <- paste0(f$name, " =~ ", paste(f$indicators, collapse = " + "))
+          }
           measurement_lines <- c(measurement_lines, line)
         }
       }
@@ -547,6 +604,37 @@ model_server <- function(id, rv) {
       # 構造モデル（回帰）生成 - checkboxGroupInputから取得
       structural_lines <- input$structural_paths_selected
       if (is.null(structural_lines)) structural_lines <- character(0)
+
+      # 間接効果計算用にラベル付きの構造パスを生成
+      labeled_structural_lines <- character(0)
+      indirect_effect_lines <- character(0)
+
+      if (isTRUE(input$add_indirect_effect) && length(structural_lines) >= 2) {
+        # パスにラベルを付与
+        path_labels <- list()
+        for (i in seq_along(structural_lines)) {
+          path <- structural_lines[i]
+          label <- letters[i]
+          labeled_structural_lines <- c(labeled_structural_lines, gsub("~", paste0("~ ", label, "*"), path))
+          path_labels[[path]] <- label
+        }
+
+        # 3因子媒介モデル（X→M→Y）の場合、間接効果を計算
+        if (length(factors) == 3 && length(structural_lines) >= 2) {
+          # a*b形式の間接効果を追加
+          if (length(path_labels) >= 2) {
+            labels <- unlist(path_labels)
+            indirect_effect_lines <- c(indirect_effect_lines,
+              paste0("indirect := ", labels[1], "*", labels[2]))
+            if (length(labels) >= 3) {
+              indirect_effect_lines <- c(indirect_effect_lines,
+                paste0("total := ", labels[3], " + ", labels[1], "*", labels[2]))
+            }
+          }
+        }
+
+        structural_lines <- labeled_structural_lines
+      }
 
       # 共分散制約（0に固定）生成 - checkboxGroupInputから取得
       covariance_lines <- input$covariance_paths_selected
@@ -566,6 +654,11 @@ model_server <- function(id, rv) {
       if (length(covariance_lines) > 0) {
         syntax_parts <- c(syntax_parts, "", "# 共分散制約")
         syntax_parts <- c(syntax_parts, covariance_lines)
+      }
+
+      if (length(indirect_effect_lines) > 0) {
+        syntax_parts <- c(syntax_parts, "", "# 間接効果・総合効果")
+        syntax_parts <- c(syntax_parts, indirect_effect_lines)
       }
 
       generated <- paste(syntax_parts, collapse = "\n")

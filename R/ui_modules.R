@@ -155,6 +155,33 @@ model_ui <- function(id) {
         title = tags$span(tags$i(class = "fas fa-mouse-pointer me-1"), "GUIビルダー"),
         value = "gui",
         card_body(
+          # クイックスタートボタン
+          tags$div(
+            class = "mb-3 p-2 bg-light rounded",
+            tags$span(class = "small text-muted me-2",
+              tags$i(class = "fas fa-bolt me-1"), "クイックスタート:"
+            ),
+            actionButton(
+              ns("quick_2factor"),
+              "2因子CFA",
+              class = "btn-sm btn-outline-primary me-1"
+            ),
+            actionButton(
+              ns("quick_3factor"),
+              "3因子CFA",
+              class = "btn-sm btn-outline-primary me-1"
+            ),
+            actionButton(
+              ns("quick_mediation"),
+              "媒介分析",
+              class = "btn-sm btn-outline-info me-1"
+            ),
+            actionButton(
+              ns("clear_all_factors"),
+              tags$span(tags$i(class = "fas fa-eraser me-1"), "クリア"),
+              class = "btn-sm btn-outline-secondary"
+            )
+          ),
           fluidRow(
             # 左: 因子定義
             column(6,
@@ -203,6 +230,36 @@ model_ui <- function(id) {
                     "共分散（↔）"
                   ),
                   uiOutput(ns("covariance_paths"))
+                )
+              ),
+
+              # 追加オプション
+              card(
+                class = "mt-3",
+                card_header(
+                  class = "py-2",
+                  tags$span(tags$i(class = "fas fa-cog me-2"), "追加オプション")
+                ),
+                card_body(
+                  class = "py-2",
+                  checkboxInput(
+                    ns("equal_loadings"),
+                    tags$span(
+                      "因子負荷量を等値制約",
+                      tags$i(class = "fas fa-question-circle ms-1 text-muted",
+                        title = "各因子内の全ての因子負荷量を同じ値に制約します（τ等価モデル）")
+                    ),
+                    value = FALSE
+                  ),
+                  checkboxInput(
+                    ns("add_indirect_effect"),
+                    tags$span(
+                      "間接効果を計算",
+                      tags$i(class = "fas fa-question-circle ms-1 text-muted",
+                        title = "媒介分析の間接効果（a*b）を定義パラメータとして追加します")
+                    ),
+                    value = FALSE
+                  )
                 )
               ),
 
