@@ -30,6 +30,7 @@ suppressPackageStartupMessages({
   library(colourpicker)
   library(htmltools)
   library(waiter)
+  library(jsonlite)
 })
 
 # --- ソースファイル読み込み ---

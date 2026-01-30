@@ -1821,40 +1821,62 @@ diagram_server <- function(id, rv) {
     output$sem_diagram <- renderPlot({
       req(rv$fit)
 
+      # 入力値の安全な取得（デフォルト値付き）
+      what_val <- if (is.null(input$what)) "std" else input$what
+      layout_val <- if (is.null(input$layout)) "tree" else input$layout
+      residuals_val <- if (is.null(input$residuals)) TRUE else input$residuals
+      intercepts_val <- if (is.null(input$intercepts)) FALSE else input$intercepts
+      thresholds_val <- if (is.null(input$thresholds)) FALSE else input$thresholds
+      node_size_val <- if (is.null(input$node_size)) 8 else input$node_size
+      edge_size_val <- if (is.null(input$edge_size)) 1 else input$edge_size
+      label_size_val <- if (is.null(input$label_size)) 1 else input$label_size
+      lat_color_val <- if (is.null(input$lat_color)) "#3498db" else input$lat_color
+      man_color_val <- if (is.null(input$man_color)) "#2ecc71" else input$man_color
+
       what_param <- switch(
-        input$what,
+        what_val,
         "std" = "std",
         "est" = "est",
         "par" = "par",
-        "nothing" = "nothing"
+        "nothing" = "nothing",
+        "std"  # デフォルト
       )
 
-      semPaths(
-        rv$fit,
-        what = what_param,
-        whatLabels = what_param,
-        layout = input$layout,
-        style = "lisrel",
-        residuals = input$residuals,
-        intercepts = input$intercepts,
-        thresholds = input$thresholds,
-        nCharNodes = 0,
-        nCharEdges = 0,
-        sizeMan = input$node_size,
-        sizeLat = input$node_size * 1.2,
-        edge.label.cex = input$label_size,
-        edge.width = input$edge_size,
-        curve = 2,
-        curvePivot = TRUE,
-        mar = c(2, 2, 2, 2),
-        color = list(
-          lat = input$lat_color,
-          man = input$man_color
-        ),
-        border.color = "#2c3e50",
-        edge.color = "#34495e",
-        label.color = "#2c3e50"
-      )
+      tryCatch({
+        semPaths(
+          rv$fit,
+          what = what_param,
+          whatLabels = what_param,
+          layout = layout_val,
+          style = "lisrel",
+          residuals = residuals_val,
+          intercepts = intercepts_val,
+          thresholds = thresholds_val,
+          nCharNodes = 0,
+          nCharEdges = 0,
+          sizeMan = node_size_val,
+          sizeLat = node_size_val * 1.2,
+          edge.label.cex = label_size_val,
+          edge.width = edge_size_val,
+          curve = 2,
+          curvePivot = TRUE,
+          mar = c(2, 2, 2, 2),
+          color = list(
+            lat = lat_color_val,
+            man = man_color_val
+          ),
+          border.color = "#2c3e50",
+          edge.color = "#34495e",
+          label.color = "#2c3e50"
+        )
+      }, error = function(e) {
+        # エラー時はメッセージを表示
+        plot.new()
+        plot.window(xlim = c(0, 1), ylim = c(0, 1))
+        text(0.5, 0.5,
+             paste0("パス図の生成中にエラーが発生しました:\n", e$message),
+             cex = 1.2, col = "#e74c3c")
+      })
     })
 
     # --- パス図ダウンロード ---
@@ -1863,48 +1885,63 @@ diagram_server <- function(id, rv) {
         paste0("sem_diagram_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".", input$download_format)
       },
       content = function(file) {
+        req(rv$fit)
+
+        # 入力値の安全な取得
+        what_val <- if (is.null(input$what)) "std" else input$what
+        layout_val <- if (is.null(input$layout)) "tree" else input$layout
+        format_val <- if (is.null(input$download_format)) "png" else input$download_format
+        width_val <- if (is.null(input$download_width)) 10 else input$download_width
+        height_val <- if (is.null(input$download_height)) 8 else input$download_height
+
         what_param <- switch(
-          input$what,
+          what_val,
           "std" = "std",
           "est" = "est",
           "par" = "par",
-          "nothing" = "nothing"
+          "nothing" = "nothing",
+          "std"
         )
 
-        if (input$download_format == "png") {
-          png(file, width = input$download_width, height = input$download_height, units = "in", res = 300)
-        } else if (input$download_format == "pdf") {
-          pdf(file, width = input$download_width, height = input$download_height)
+        if (format_val == "png") {
+          png(file, width = width_val, height = height_val, units = "in", res = 300)
+        } else if (format_val == "pdf") {
+          pdf(file, width = width_val, height = height_val)
         } else {
-          svg(file, width = input$download_width, height = input$download_height)
+          svg(file, width = width_val, height = height_val)
         }
 
-        semPaths(
-          rv$fit,
-          what = what_param,
-          whatLabels = what_param,
-          layout = input$layout,
-          style = "lisrel",
-          residuals = input$residuals,
-          intercepts = input$intercepts,
-          thresholds = input$thresholds,
-          nCharNodes = 0,
-          nCharEdges = 0,
-          sizeMan = input$node_size,
-          sizeLat = input$node_size * 1.2,
-          edge.label.cex = input$label_size,
-          edge.width = input$edge_size,
-          curve = 2,
-          curvePivot = TRUE,
-          mar = c(2, 2, 2, 2),
-          color = list(
-            lat = input$lat_color,
-            man = input$man_color
-          ),
-          border.color = "#2c3e50",
-          edge.color = "#34495e",
-          label.color = "#2c3e50"
-        )
+        tryCatch({
+          semPaths(
+            rv$fit,
+            what = what_param,
+            whatLabels = what_param,
+            layout = layout_val,
+            style = "lisrel",
+            residuals = if (is.null(input$residuals)) TRUE else input$residuals,
+            intercepts = if (is.null(input$intercepts)) FALSE else input$intercepts,
+            thresholds = if (is.null(input$thresholds)) FALSE else input$thresholds,
+            nCharNodes = 0,
+            nCharEdges = 0,
+            sizeMan = if (is.null(input$node_size)) 8 else input$node_size,
+            sizeLat = (if (is.null(input$node_size)) 8 else input$node_size) * 1.2,
+            edge.label.cex = if (is.null(input$label_size)) 1 else input$label_size,
+            edge.width = if (is.null(input$edge_size)) 1 else input$edge_size,
+            curve = 2,
+            curvePivot = TRUE,
+            mar = c(2, 2, 2, 2),
+            color = list(
+              lat = if (is.null(input$lat_color)) "#3498db" else input$lat_color,
+              man = if (is.null(input$man_color)) "#2ecc71" else input$man_color
+            ),
+            border.color = "#2c3e50",
+            edge.color = "#34495e",
+            label.color = "#2c3e50"
+          )
+        }, error = function(e) {
+          plot.new()
+          text(0.5, 0.5, paste0("エラー: ", e$message), cex = 1)
+        })
 
         dev.off()
       }
