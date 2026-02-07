@@ -1,5 +1,6 @@
 # =============================================================================
 # UI モジュール
+# Production Version 2.0
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -132,6 +133,69 @@ data_ui <- function(id) {
           plotOutput(ns("missing_plot"), height = "300px"),
           hr(),
           DTOutput(ns("missing_table"))
+        )
+      ),
+
+      nav_panel(
+        title = "正規性検定",
+        icon = icon("bell-curve", lib = "font-awesome", verify_fa = FALSE),
+        card_body(
+          tags$h5(class = "mb-3",
+            tags$i(class = "fas fa-chart-area me-2"),
+            "単変量正規性検定 (Shapiro-Wilk)"
+          ),
+          tags$p(class = "small text-muted",
+            "正規性の仮定が成り立つかを検定します。p値 < .05 の場合、正規分布から有意に逸脱しています。",
+            tags$br(),
+            "非正規データの場合は MLR または WLSMV 推定法の使用を検討してください。"
+          ),
+          DTOutput(ns("normality_table")),
+          hr(),
+          tags$h5(class = "mb-3",
+            tags$i(class = "fas fa-cubes me-2"),
+            "多変量正規性検定 (Mardia)"
+          ),
+          uiOutput(ns("multivariate_normality"))
+        )
+      ),
+
+      nav_panel(
+        title = "外れ値検出",
+        icon = icon("crosshairs"),
+        card_body(
+          tags$h5(class = "mb-3",
+            tags$i(class = "fas fa-search me-2"),
+            "Mahalanobis距離による外れ値検出"
+          ),
+          tags$p(class = "small text-muted",
+            "多変量的に異常な値を持つケースを検出します。",
+            "カイ二乗分布の臨界値を超えるケースが外れ値として判定されます。"
+          ),
+          uiOutput(ns("outlier_results"))
+        )
+      ),
+
+      nav_panel(
+        title = "信頼性分析",
+        icon = icon("shield-alt"),
+        card_body(
+          tags$h5(class = "mb-3",
+            tags$i(class = "fas fa-check-double me-2"),
+            "Cronbach's Alpha"
+          ),
+          tags$p(class = "small text-muted",
+            "尺度の内的整合性を評価します。各因子を構成する項目を選択してください。"
+          ),
+          fluidRow(
+            column(6,
+              uiOutput(ns("alpha_items_selector"))
+            ),
+            column(6,
+              uiOutput(ns("reliability_alpha"))
+            )
+          ),
+          hr(),
+          DTOutput(ns("alpha_item_stats"))
         )
       )
     )
@@ -358,7 +422,8 @@ model_ui <- function(id) {
                   "CFA" = "cfa",
                   "SEM" = "sem",
                   "パス" = "path",
-                  "高度" = "advanced"
+                  "高度" = "advanced",
+                  "MIMIC" = "mimic"
                 ),
                 status = "primary",
                 justified = TRUE,
@@ -708,6 +773,31 @@ results_ui <- function(id) {
             card_body(
               checkboxInput(ns("std_all"), "標準化係数を表示", value = TRUE),
               DTOutput(ns("all_params_table"))
+            )
+          ),
+
+          nav_panel(
+            title = "R\u00b2 (説明率)",
+            icon = icon("percentage"),
+            card_body(
+              tags$p(class = "small text-muted mb-3",
+                "各従属変数がモデルによってどの程度説明されているかを示します。",
+                "Cohen (1988) の基準: 小 (.02), 中 (.13), 大 (.26)"
+              ),
+              DTOutput(ns("rsquare_table"))
+            )
+          ),
+
+          nav_panel(
+            title = "信頼性 (\u03c9)",
+            icon = icon("shield-alt"),
+            card_body(
+              tags$p(class = "small text-muted mb-3",
+                "McDonald's \u03c9 はCFAモデルに基づく合成信頼性です。",
+                "Cronbach's \u03b1 よりも正確な推定が可能です。",
+                "\u03c9 \u2265 .80 が目安とされます。"
+              ),
+              uiOutput(ns("reliability_results"))
             )
           )
         )

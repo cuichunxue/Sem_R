@@ -1,12 +1,12 @@
 # =============================================================================
 # lavaan SEM Analysis Web Application
 # 構造方程式モデリング解析Webアプリケーション
-# Production Version 1.0
+# Production Version 2.0
 # =============================================================================
 
 # --- 設定 ---
 options(
-  shiny.maxRequestSize = 50 * 1024^2,  # 最大50MBのファイルアップロード
+  shiny.maxRequestSize = 100 * 1024^2,  # 最大100MBのファイルアップロード
   shiny.sanitize.errors = TRUE,         # エラーメッセージのサニタイズ
   warn = 1                               # 警告を即座に表示
 )
@@ -41,10 +41,10 @@ source("R/server_modules.R")
 # --- アプリケーション設定 ---
 APP_CONFIG <- list(
   name = "SEM Analysis Tool",
-  version = "1.0.0",
+  version = "2.0.0",
   max_variables = 200,        # 最大変数数
-
   max_observations = 100000,  # 最大観測数
+  max_file_size_mb = 100,     # 最大ファイルサイズ（MB）
   session_timeout = 30,       # セッションタイムアウト（分）
   enable_logging = TRUE
 )

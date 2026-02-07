@@ -13,20 +13,32 @@ data_server <- function(id, rv) {
     observeEvent(input$file_upload, {
       req(input$file_upload)
 
+      waiter <- Waiter$new(
+        html = tagList(
+          spin_fading_circles(),
+          tags$h4("データを読み込んでいます...", class = "text-white mt-3")
+        ),
+        color = "rgba(44, 62, 80, 0.8)"
+      )
+
       tryCatch({
-        waiter <- Waiter$new(
-          html = tagList(
-            spin_fading_circles(),
-            tags$h4("データを読み込んでいます...", class = "text-white mt-3")
-          ),
-          color = "rgba(44, 62, 80, 0.8)"
-        )
         waiter$show()
 
-        rv$data <- read_data_file(input$file_upload)
+        # safe_read_file でバリデーション付き読み込み
+        rv$data <- safe_read_file(input$file_upload)
         rv$data_name <- input$file_upload$name
 
         waiter$hide()
+
+        # バリデーション警告があれば表示
+        warnings <- attr(rv$data, "validation_warnings")
+        if (length(warnings) > 0) {
+          showNotification(
+            paste0("注意: ", paste(warnings, collapse = "; ")),
+            type = "warning",
+            duration = 8
+          )
+        }
 
         showNotification(
           paste0("データを読み込みました: ", nrow(rv$data), " 行 × ", ncol(rv$data), " 列"),
@@ -35,7 +47,7 @@ data_server <- function(id, rv) {
         )
 
       }, error = function(e) {
-        waiter$hide()
+        tryCatch(waiter$hide(), error = function(e2) NULL)
         showNotification(
           paste("エラー:", e$message),
           type = "error",
@@ -302,6 +314,143 @@ data_server <- function(id, rv) {
         ),
         rownames = FALSE
       )
+    })
+
+    # --- 信頼性分析の項目セレクター ---
+    output$alpha_items_selector <- renderUI({
+      req(rv$data)
+      vars <- names(rv$data)[sapply(rv$data, is.numeric)]
+      checkboxGroupInput(
+        ns("alpha_items"),
+        "項目を選択:",
+        choices = vars,
+        selected = NULL
+      )
+    })
+
+    # --- 正規性検定 ---
+    output$normality_table <- renderDT({
+      req(rv$data)
+
+      result <- test_normality(rv$data)
+
+      if (is.null(result$univariate)) {
+        return(datatable(data.frame(message = result$message)))
+      }
+
+      datatable(
+        result$univariate,
+        options = list(
+          pageLength = 20,
+          dom = 'Bfrtip',
+          buttons = c('copy', 'csv')
+        ),
+        extensions = 'Buttons',
+        rownames = FALSE
+      )
+    })
+
+    output$multivariate_normality <- renderUI({
+      req(rv$data)
+
+      result <- test_normality(rv$data)
+
+      if (is.null(result$multivariate) || !is.null(result$multivariate$message)) {
+        msg <- if (!is.null(result$multivariate$message)) result$multivariate$message else "\u591a\u5909\u91cf\u6b63\u898f\u6027\u691c\u5b9a\u304c\u5b9f\u884c\u3067\u304d\u307e\u305b\u3093"
+        return(tags$div(class = "alert alert-info", msg))
+      }
+
+      mv <- result$multivariate
+      tags$div(
+        class = "result-panel",
+        tags$h6("Mardia\u306e\u591a\u5909\u91cf\u6b63\u898f\u6027\u691c\u5b9a"),
+        tags$table(
+          class = "table table-sm",
+          tags$tbody(
+            tags$tr(tags$td(tags$strong("\u591a\u5909\u91cf\u5c16\u5ea6")), tags$td(mv$mardia_kurtosis)),
+            tags$tr(tags$td(tags$strong("\u671f\u5f85\u5024")), tags$td(mv$expected_kurtosis)),
+            tags$tr(tags$td(tags$strong("z\u5024")), tags$td(mv$kurtosis_z)),
+            tags$tr(tags$td(tags$strong("\u89e3\u91c8")), tags$td(mv$interpretation))
+          )
+        )
+      )
+    })
+
+    # --- 外れ値検出 ---
+    output$outlier_results <- renderUI({
+      req(rv$data)
+
+      result <- detect_outliers_mahalanobis(rv$data)
+
+      tags$div(
+        tags$div(
+          class = paste0("alert alert-", if (result$n_outliers > 0) "warning" else "success"),
+          tags$i(class = paste0("fas fa-", if (result$n_outliers > 0) "exclamation-triangle" else "check-circle", " me-2")),
+          result$message
+        ),
+        if (result$n_outliers > 0 && !is.null(result$outlier_indices)) {
+          tags$p(class = "small text-muted",
+            paste0("\u5916\u308c\u5024\u306e\u884c\u756a\u53f7: ", paste(result$outlier_indices, collapse = ", ")))
+        }
+      )
+    })
+
+    # --- Cronbach's Alpha ---
+    output$reliability_alpha <- renderUI({
+      req(rv$data)
+      req(input$alpha_items)
+
+      items <- input$alpha_items
+      if (length(items) < 2) {
+        return(tags$p(class = "text-muted", "2\u3064\u4ee5\u4e0a\u306e\u9805\u76ee\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044"))
+      }
+
+      result <- calculate_cronbach_alpha(rv$data, items)
+
+      if (is.na(result$alpha)) {
+        return(tags$div(class = "alert alert-warning", result$message))
+      }
+
+      badge_class <- if (result$alpha >= 0.8) "bg-success"
+        else if (result$alpha >= 0.7) "bg-warning"
+        else "bg-danger"
+
+      tags$div(
+        class = "reliability-result",
+        fluidRow(
+          column(4,
+            tags$div(class = "text-center",
+              tags$span(class = "metric-value", sprintf("%.3f", result$alpha)),
+              tags$br(),
+              tags$span(class = "metric-label", "Cronbach's \u03b1")
+            )
+          ),
+          column(8,
+            tags$span(class = paste("badge", badge_class, "mb-1"), result$message),
+            tags$br(),
+            tags$small(class = "text-muted",
+              paste0("N = ", result$n, ", \u9805\u76ee\u6570 = ", result$k))
+          )
+        )
+      )
+    })
+
+    output$alpha_item_stats <- renderDT({
+      req(rv$data)
+      req(input$alpha_items)
+
+      items <- input$alpha_items
+      if (length(items) < 2) return(NULL)
+
+      result <- calculate_cronbach_alpha(rv$data, items)
+      if (is.na(result$alpha)) return(NULL)
+
+      datatable(
+        result$item_stats,
+        options = list(dom = 't', pageLength = 50),
+        rownames = FALSE
+      ) %>%
+        formatRound(columns = 2:5, digits = 3)
     })
 
     return(rv)
@@ -901,6 +1050,7 @@ model_server <- function(id, rv) {
         "sem" = model_templates[c("sem_basic", "sem_mediation")],
         "path" = model_templates[c("path_analysis")],
         "advanced" = model_templates[c("higher_order", "bifactor")],
+        "mimic" = model_templates[c("mimic")],
         model_templates[1:3]
       )
 
@@ -1121,28 +1271,13 @@ estimation_server <- function(id, rv) {
         updateNavbarPage(session, "main_nav", selected = "results_tab")
 
       }, error = function(e) {
-        waiter$hide()
+        tryCatch(waiter$hide(), error = function(e2) NULL)
 
-        # エラーメッセージを解析して日本語のヘルプを追加
-        error_msg <- e$message
-        help_msg <- ""
+        # エラーメッセージを日本語に翻訳
+        translated <- translate_lavaan_error(e$message)
 
-        if (grepl("covariance matrix", error_msg, ignore.case = TRUE)) {
-          help_msg <- "データに問題がある可能性があります。欠損値や外れ値を確認してください。"
-        } else if (grepl("not positive definite", error_msg, ignore.case = TRUE)) {
-          help_msg <- "共分散行列が正定値ではありません。変数間に完全な相関がないか確認してください。"
-        } else if (grepl("convergence", error_msg, ignore.case = TRUE)) {
-          help_msg <- "モデルが収束しませんでした。モデルを簡略化するか、開始値を調整してください。"
-        } else if (grepl("singular", error_msg, ignore.case = TRUE)) {
-          help_msg <- "行列が特異です。冗長な変数や線形従属がないか確認してください。"
-        } else if (grepl("degrees of freedom", error_msg, ignore.case = TRUE)) {
-          help_msg <- "自由度が負です。モデルが過剰識別されていない可能性があります。"
-        } else if (grepl("unknown variable", error_msg, ignore.case = TRUE)) {
-          help_msg <- "モデル構文の変数名がデータに存在しません。変数名を確認してください。"
-        }
-
-        rv$error_message <- error_msg
-        rv$error_help <- help_msg
+        rv$error_message <- translated$message
+        rv$error_help <- translated$help
         rv$estimation_complete <- FALSE
 
         showNotification(
@@ -1718,6 +1853,75 @@ results_server <- function(id, rv) {
       })
     })
 
+    # --- R²（説明率）テーブル ---
+    output$rsquare_table <- renderDT({
+      req(rv$fit)
+
+      r2_table <- create_rsquare_table(rv$fit)
+
+      if (is.null(r2_table)) {
+        return(datatable(data.frame(message = "R\u00b2\u304c\u5229\u7528\u3067\u304d\u307e\u305b\u3093")))
+      }
+
+      datatable(
+        r2_table,
+        options = list(
+          dom = 'Bfrtip',
+          pageLength = 20,
+          buttons = c('copy', 'csv')
+        ),
+        extensions = 'Buttons',
+        rownames = FALSE
+      ) %>%
+        formatRound(columns = c("R\u00b2", "\u8aac\u660e\u7387(%)"), digits = 3)
+    })
+
+    # --- 信頼性分析（omega）---
+    output$reliability_results <- renderUI({
+      req(rv$fit)
+
+      omegas <- calculate_omega(rv$fit)
+
+      if (is.null(omegas) || length(omegas) == 0 || !is.null(omegas$error)) {
+        return(tags$p(class = "text-muted", "\u4fe1\u983c\u6027\u5206\u6790\u304c\u5229\u7528\u3067\u304d\u307e\u305b\u3093"))
+      }
+
+      tagList(
+        lapply(names(omegas), function(f) {
+          omega_val <- omegas[[f]]
+          interpretation <- if (omega_val >= 0.9) "\u512a\u79c0"
+            else if (omega_val >= 0.8) "\u826f\u597d"
+            else if (omega_val >= 0.7) "\u8a31\u5bb9"
+            else if (omega_val >= 0.6) "\u7591\u554f"
+            else "\u4e0d\u5341\u5206"
+
+          badge_class <- if (omega_val >= 0.8) "bg-success"
+            else if (omega_val >= 0.7) "bg-warning"
+            else "bg-danger"
+
+          tags$div(
+            class = "reliability-result",
+            fluidRow(
+              column(3,
+                tags$div(class = "text-center",
+                  tags$span(class = "metric-value", sprintf("%.3f", omega_val)),
+                  tags$br(),
+                  tags$span(class = "metric-label", paste0("\u03c9 (", f, ")"))
+                )
+              ),
+              column(9,
+                tags$span(class = paste("badge", badge_class, "mb-1"), interpretation),
+                tags$p(class = "small text-muted mb-0",
+                  "McDonald's \u03c9\u306fCFA\u30e2\u30c7\u30eb\u306b\u57fa\u3065\u304f\u5408\u6210\u4fe1\u983c\u6027\u3067\u3059\u3002",
+                  "\u03b1\u3088\u308a\u3082\u6b63\u78ba\u306a\u63a8\u5b9a\u304c\u53ef\u80fd\u3067\u3059\u3002"
+                )
+              )
+            )
+          )
+        })
+      )
+    })
+
     # --- lavaan詳細出力 ---
     output$lavaan_summary <- renderPrint({
       req(rv$fit)
@@ -1738,72 +1942,135 @@ results_server <- function(id, rv) {
   })
 }
 
-# --- HTMLレポート生成 ---
+# --- HTMLレポート生成（XSSセキュリティ修正済み） ---
 generate_html_report <- function(fit, model_syntax, data_name) {
   fm <- fitMeasures(fit)
   params <- parameterEstimates(fit, standardized = TRUE)
 
+  # XSS防止: ユーザー入力をエスケープ
+  safe_syntax <- escape_html(model_syntax)
+  safe_data_name <- escape_html(data_name)
+
+  # 適合度判定
+  cfi_eval <- evaluate_fit_index("cfi", fm["cfi"])
+  rmsea_eval <- evaluate_fit_index("rmsea", fm["rmsea"])
+  srmr_eval <- evaluate_fit_index("srmr", fm["srmr"])
+
   html <- paste0('
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SEM Analysis Report</title>
   <style>
-    body { font-family: "Helvetica Neue", Arial, sans-serif; margin: 40px; line-height: 1.6; }
+    body { font-family: "Noto Sans JP", "Helvetica Neue", Arial, sans-serif; margin: 40px; line-height: 1.6; color: #2c3e50; }
     h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
-    h2 { color: #34495e; margin-top: 30px; }
+    h2 { color: #34495e; margin-top: 30px; border-left: 4px solid #3498db; padding-left: 12px; }
     table { border-collapse: collapse; width: 100%; margin: 20px 0; }
     th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
     th { background-color: #2c3e50; color: white; }
     tr:nth-child(even) { background-color: #f9f9f9; }
-    .fit-good { background-color: #d4edda; }
-    .fit-acceptable { background-color: #fff3cd; }
-    .fit-poor { background-color: #f8d7da; }
-    pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    .fit-good { background-color: #d4edda; font-weight: 600; }
+    .fit-acceptable { background-color: #fff3cd; font-weight: 600; }
+    .fit-poor { background-color: #f8d7da; font-weight: 600; }
+    pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 13px; }
     .meta { color: #666; font-size: 0.9em; }
+    .summary-cards { display: flex; gap: 15px; flex-wrap: wrap; margin: 20px 0; }
+    .summary-card { flex: 1; min-width: 140px; padding: 15px; border-radius: 8px; text-align: center; }
+    .summary-card .value { font-size: 1.5em; font-weight: 700; }
+    .summary-card .label { font-size: 0.85em; color: #666; }
+    .sig { color: #155724; font-weight: 600; }
+    .nonsig { color: #721c24; }
+    @media print { body { margin: 20px; } }
   </style>
 </head>
 <body>
   <h1>SEM Analysis Report</h1>
   <p class="meta">Generated: ', format(Sys.time(), "%Y-%m-%d %H:%M:%S"), '</p>
-  <p class="meta">Data: ', data_name, '</p>
+  <p class="meta">Data: ', safe_data_name, '</p>
+  <p class="meta">N = ', nrow(lavInspect(fit, "data")), '</p>
 
   <h2>Model Syntax</h2>
-  <pre>', model_syntax, '</pre>
+  <pre>', safe_syntax, '</pre>
+
+  <h2>Fit Summary</h2>
+  <div class="summary-cards">
+    <div class="summary-card ', cfi_eval$class, '">
+      <div class="value">', sprintf("%.3f", fm["cfi"]), '</div>
+      <div class="label">CFI (', cfi_eval$judgment, ')</div>
+    </div>
+    <div class="summary-card ', rmsea_eval$class, '">
+      <div class="value">', sprintf("%.3f", fm["rmsea"]), '</div>
+      <div class="label">RMSEA (', rmsea_eval$judgment, ')</div>
+    </div>
+    <div class="summary-card ', srmr_eval$class, '">
+      <div class="value">', sprintf("%.3f", fm["srmr"]), '</div>
+      <div class="label">SRMR (', srmr_eval$judgment, ')</div>
+    </div>
+  </div>
 
   <h2>Fit Indices</h2>
   <table>
-    <tr><th>Index</th><th>Value</th></tr>
-    <tr><td>Chi-square</td><td>', sprintf("%.3f", fm["chisq"]), '</td></tr>
-    <tr><td>df</td><td>', sprintf("%.0f", fm["df"]), '</td></tr>
-    <tr><td>p-value</td><td>', sprintf("%.4f", fm["pvalue"]), '</td></tr>
-    <tr><td>CFI</td><td>', sprintf("%.3f", fm["cfi"]), '</td></tr>
-    <tr><td>TLI</td><td>', sprintf("%.3f", fm["tli"]), '</td></tr>
-    <tr><td>RMSEA</td><td>', sprintf("%.3f", fm["rmsea"]), '</td></tr>
-    <tr><td>SRMR</td><td>', sprintf("%.3f", fm["srmr"]), '</td></tr>
-    <tr><td>AIC</td><td>', sprintf("%.1f", fm["aic"]), '</td></tr>
-    <tr><td>BIC</td><td>', sprintf("%.1f", fm["bic"]), '</td></tr>
+    <tr><th>Index</th><th>Value</th><th>Judgment</th></tr>
+    <tr><td>Chi-square</td><td>', sprintf("%.3f", fm["chisq"]), '</td><td>-</td></tr>
+    <tr><td>df</td><td>', sprintf("%.0f", fm["df"]), '</td><td>-</td></tr>
+    <tr><td>p-value</td><td>', sprintf("%.4f", fm["pvalue"]), '</td><td>-</td></tr>
+    <tr class="', cfi_eval$class, '"><td>CFI</td><td>', sprintf("%.3f", fm["cfi"]), '</td><td>', cfi_eval$judgment, '</td></tr>
+    <tr class="', evaluate_fit_index("tli", fm["tli"])$class, '"><td>TLI</td><td>', sprintf("%.3f", fm["tli"]), '</td><td>', evaluate_fit_index("tli", fm["tli"])$judgment, '</td></tr>
+    <tr class="', rmsea_eval$class, '"><td>RMSEA</td><td>', sprintf("%.3f", fm["rmsea"]), '</td><td>', rmsea_eval$judgment, '</td></tr>
+    <tr><td>RMSEA 90% CI</td><td>[', sprintf("%.3f", fm["rmsea.ci.lower"]), ', ', sprintf("%.3f", fm["rmsea.ci.upper"]), ']</td><td>-</td></tr>
+    <tr class="', srmr_eval$class, '"><td>SRMR</td><td>', sprintf("%.3f", fm["srmr"]), '</td><td>', srmr_eval$judgment, '</td></tr>
+    <tr><td>AIC</td><td>', sprintf("%.1f", fm["aic"]), '</td><td>-</td></tr>
+    <tr><td>BIC</td><td>', sprintf("%.1f", fm["bic"]), '</td><td>-</td></tr>
   </table>
 
   <h2>Parameter Estimates</h2>
   <table>
-    <tr><th>Path</th><th>Estimate</th><th>Std.All</th><th>SE</th><th>z</th><th>p</th></tr>')
+    <tr><th>Path</th><th>Estimate</th><th>Std.All</th><th>SE</th><th>z</th><th>p</th><th>95% CI</th></tr>')
 
   for (i in 1:nrow(params)) {
+    sig_class <- if (!is.na(params$pvalue[i]) && params$pvalue[i] < 0.05) "sig" else "nonsig"
+    ci_text <- if (!is.na(params$ci.lower[i]) && !is.na(params$ci.upper[i])) {
+      sprintf("[%.3f, %.3f]", params$ci.lower[i], params$ci.upper[i])
+    } else { "-" }
+
     html <- paste0(html, '
     <tr>
-      <td>', params$lhs[i], ' ', params$op[i], ' ', params$rhs[i], '</td>
+      <td>', escape_html(params$lhs[i]), ' ', escape_html(params$op[i]), ' ', escape_html(params$rhs[i]), '</td>
       <td>', sprintf("%.3f", params$est[i]), '</td>
       <td>', sprintf("%.3f", params$std.all[i]), '</td>
       <td>', sprintf("%.3f", params$se[i]), '</td>
       <td>', sprintf("%.3f", params$z[i]), '</td>
-      <td>', sprintf("%.4f", params$pvalue[i]), '</td>
+      <td class="', sig_class, '">', sprintf("%.4f", params$pvalue[i]), '</td>
+      <td>', ci_text, '</td>
     </tr>')
   }
 
   html <- paste0(html, '
-  </table>
+  </table>')
+
+  # R² セクション追加
+  r2 <- tryCatch(lavInspect(fit, "rsquare"), error = function(e) NULL)
+  if (!is.null(r2) && length(r2) > 0) {
+    html <- paste0(html, '
+  <h2>R-squared (Explained Variance)</h2>
+  <table>
+    <tr><th>Variable</th><th>R&sup2;</th><th>Explained (%)</th><th>Effect Size</th></tr>')
+    for (nm in names(r2)) {
+      effect <- if (r2[nm] >= 0.26) "Large" else if (r2[nm] >= 0.13) "Medium" else if (r2[nm] >= 0.02) "Small" else "Negligible"
+      html <- paste0(html, '
+    <tr><td>', escape_html(nm), '</td><td>', sprintf("%.3f", r2[nm]),
+    '</td><td>', sprintf("%.1f%%", r2[nm] * 100),
+    '</td><td>', effect, '</td></tr>')
+    }
+    html <- paste0(html, '
+  </table>')
+  }
+
+  html <- paste0(html, '
+  <hr>
+  <p class="meta">Generated by SEM Analysis Tool v2.0</p>
 </body>
 </html>')
 
@@ -1817,66 +2084,11 @@ diagram_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # --- パス図 ---
+    # --- パス図（共通ヘルパー関数使用） ---
     output$sem_diagram <- renderPlot({
       req(rv$fit)
-
-      # 入力値の安全な取得（デフォルト値付き）
-      what_val <- if (is.null(input$what)) "std" else input$what
-      layout_val <- if (is.null(input$layout)) "tree" else input$layout
-      residuals_val <- if (is.null(input$residuals)) TRUE else input$residuals
-      intercepts_val <- if (is.null(input$intercepts)) FALSE else input$intercepts
-      thresholds_val <- if (is.null(input$thresholds)) FALSE else input$thresholds
-      node_size_val <- if (is.null(input$node_size)) 8 else input$node_size
-      edge_size_val <- if (is.null(input$edge_size)) 1 else input$edge_size
-      label_size_val <- if (is.null(input$label_size)) 1 else input$label_size
-      lat_color_val <- if (is.null(input$lat_color)) "#3498db" else input$lat_color
-      man_color_val <- if (is.null(input$man_color)) "#2ecc71" else input$man_color
-
-      what_param <- switch(
-        what_val,
-        "std" = "std",
-        "est" = "est",
-        "par" = "par",
-        "nothing" = "nothing",
-        "std"  # デフォルト
-      )
-
-      tryCatch({
-        semPaths(
-          rv$fit,
-          what = what_param,
-          whatLabels = what_param,
-          layout = layout_val,
-          style = "lisrel",
-          residuals = residuals_val,
-          intercepts = intercepts_val,
-          thresholds = thresholds_val,
-          nCharNodes = 0,
-          nCharEdges = 0,
-          sizeMan = node_size_val,
-          sizeLat = node_size_val * 1.2,
-          edge.label.cex = label_size_val,
-          edge.width = edge_size_val,
-          curve = 2,
-          curvePivot = TRUE,
-          mar = c(2, 2, 2, 2),
-          color = list(
-            lat = lat_color_val,
-            man = man_color_val
-          ),
-          border.color = "#2c3e50",
-          edge.color = "#34495e",
-          label.color = "#2c3e50"
-        )
-      }, error = function(e) {
-        # エラー時はメッセージを表示
-        plot.new()
-        plot.window(xlim = c(0, 1), ylim = c(0, 1))
-        text(0.5, 0.5,
-             paste0("パス図の生成中にエラーが発生しました:\n", e$message),
-             cex = 1.2, col = "#e74c3c")
-      })
+      params <- get_semplot_params(input)
+      draw_semplot(rv$fit, params)
     })
 
     # --- パス図ダウンロード ---
@@ -1887,21 +2099,9 @@ diagram_server <- function(id, rv) {
       content = function(file) {
         req(rv$fit)
 
-        # 入力値の安全な取得
-        what_val <- if (is.null(input$what)) "std" else input$what
-        layout_val <- if (is.null(input$layout)) "tree" else input$layout
         format_val <- if (is.null(input$download_format)) "png" else input$download_format
         width_val <- if (is.null(input$download_width)) 10 else input$download_width
         height_val <- if (is.null(input$download_height)) 8 else input$download_height
-
-        what_param <- switch(
-          what_val,
-          "std" = "std",
-          "est" = "est",
-          "par" = "par",
-          "nothing" = "nothing",
-          "std"
-        )
 
         if (format_val == "png") {
           png(file, width = width_val, height = height_val, units = "in", res = 300)
@@ -1911,38 +2111,8 @@ diagram_server <- function(id, rv) {
           svg(file, width = width_val, height = height_val)
         }
 
-        tryCatch({
-          semPaths(
-            rv$fit,
-            what = what_param,
-            whatLabels = what_param,
-            layout = layout_val,
-            style = "lisrel",
-            residuals = if (is.null(input$residuals)) TRUE else input$residuals,
-            intercepts = if (is.null(input$intercepts)) FALSE else input$intercepts,
-            thresholds = if (is.null(input$thresholds)) FALSE else input$thresholds,
-            nCharNodes = 0,
-            nCharEdges = 0,
-            sizeMan = if (is.null(input$node_size)) 8 else input$node_size,
-            sizeLat = (if (is.null(input$node_size)) 8 else input$node_size) * 1.2,
-            edge.label.cex = if (is.null(input$label_size)) 1 else input$label_size,
-            edge.width = if (is.null(input$edge_size)) 1 else input$edge_size,
-            curve = 2,
-            curvePivot = TRUE,
-            mar = c(2, 2, 2, 2),
-            color = list(
-              lat = if (is.null(input$lat_color)) "#3498db" else input$lat_color,
-              man = if (is.null(input$man_color)) "#2ecc71" else input$man_color
-            ),
-            border.color = "#2c3e50",
-            edge.color = "#34495e",
-            label.color = "#2c3e50"
-          )
-        }, error = function(e) {
-          plot.new()
-          text(0.5, 0.5, paste0("エラー: ", e$message), cex = 1)
-        })
-
+        params <- get_semplot_params(input)
+        draw_semplot(rv$fit, params)
         dev.off()
       }
     )
