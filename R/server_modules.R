@@ -1238,79 +1238,86 @@ estimation_server <- function(id, rv) {
       )
       waiter$show()
 
-      tryCatch({
-        # 推定オプションの設定
-        bootstrap_n <- if (input$se == "bootstrap") input$bootstrap_n else NULL
+      # withCallingHandlers で警告を処理しつつ実行を継続し、
+      # tryCatch でエラーのみをキャッチする
+      tryCatch(
+        withCallingHandlers({
+          # 推定オプションの設定
+          bootstrap_n <- if (input$se == "bootstrap") input$bootstrap_n else NULL
 
-        # lavaan実行
-        fit <- sem(
-          model = rv$model_syntax,
-          data = rv$data,
-          estimator = input$estimator,
-          missing = input$missing,
-          se = input$se,
-          bootstrap = bootstrap_n,
-          std.lv = input$std_lv,
-          fixed.x = input$fixed_x,
-          meanstructure = input$meanstructure,
-          orthogonal = input$orthogonal
-        )
+          # lavaan実行
+          fit <- sem(
+            model = rv$model_syntax,
+            data = rv$data,
+            estimator = input$estimator,
+            missing = input$missing,
+            se = input$se,
+            bootstrap = bootstrap_n,
+            std.lv = input$std_lv,
+            fixed.x = input$fixed_x,
+            meanstructure = input$meanstructure,
+            orthogonal = input$orthogonal
+          )
 
-        rv$fit <- fit
-        rv$fit_summary <- summary(fit, standardized = TRUE, fit.measures = TRUE)
-        rv$estimation_complete <- TRUE
+          rv$fit <- fit
+          rv$fit_summary <- summary(fit, standardized = TRUE, fit.measures = TRUE)
+          rv$estimation_complete <- TRUE
 
-        waiter$hide()
+          waiter$hide()
 
-        showNotification(
-          "分析が完了しました",
-          type = "message",
-          duration = 5
-        )
+          showNotification(
+            "分析が完了しました",
+            type = "message",
+            duration = 5
+          )
 
-        # 結果タブに移動（親セッション経由）
-        if (!is.null(rv$parent_session)) {
-          updateNavbarPage(rv$parent_session, "main_nav", selected = "results_tab")
+          # 結果タブに移動（親セッション経由）
+          if (!is.null(rv$parent_session)) {
+            updateNavbarPage(rv$parent_session, "main_nav", selected = "results_tab")
+          }
+
+        }, warning = function(w) {
+          # 警告を表示しつつ実行を継続（invokeRestart で処理済みにする）
+          warn_msg <- w$message
+          warn_help <- ""
+
+          if (grepl("negative variance", warn_msg, ignore.case = TRUE)) {
+            warn_help <- "\uff08Heywood\u30b1\u30fc\u30b9: \u30e2\u30c7\u30eb\u306e\u518d\u691c\u8a0e\u3092\u63a8\u5968\uff09"
+          } else if (grepl("not converged", warn_msg, ignore.case = TRUE)) {
+            warn_help <- "\uff08\u53ce\u675f\u3057\u3066\u3044\u306a\u3044\u53ef\u80fd\u6027\u3042\u308a\uff09"
+          }
+
+          showNotification(
+            paste0("\u8b66\u544a: ", warn_msg, " ", warn_help),
+            type = "warning",
+            duration = 10
+          )
+
+          invokeRestart("muffleWarning")
+        }),
+        error = function(e) {
+          tryCatch(waiter$hide(), error = function(e2) NULL)
+
+          # エラーメッセージを日本語に翻訳
+          translated <- translate_lavaan_error(e$message)
+
+          rv$error_message <- translated$message
+          rv$error_help <- translated$help
+          rv$estimation_complete <- FALSE
+
+          showNotification(
+            tags$div(
+              tags$strong("\u5206\u6790\u30a8\u30e9\u30fc"),
+              tags$br(),
+              tags$span(translated$message),
+              if (translated$help != "") tags$br(),
+              if (translated$help != "") tags$small(class = "text-info", translated$help)
+            ),
+            type = "error",
+            duration = 15
+          )
         }
-
-      }, error = function(e) {
-        tryCatch(waiter$hide(), error = function(e2) NULL)
-
-        # エラーメッセージを日本語に翻訳
-        translated <- translate_lavaan_error(e$message)
-
-        rv$error_message <- translated$message
-        rv$error_help <- translated$help
-        rv$estimation_complete <- FALSE
-
-        showNotification(
-          tags$div(
-            tags$strong("分析エラー"),
-            tags$br(),
-            tags$span(translated$message),
-            if (translated$help != "") tags$br(),
-            if (translated$help != "") tags$small(class = "text-info", translated$help)
-          ),
-          type = "error",
-          duration = 15
-        )
-      }, warning = function(w) {
-        # 警告メッセージも日本語で補足
-        warn_msg <- w$message
-        warn_help <- ""
-
-        if (grepl("negative variance", warn_msg, ignore.case = TRUE)) {
-          warn_help <- "（Heywoodケース: モデルの再検討を推奨）"
-        } else if (grepl("not converged", warn_msg, ignore.case = TRUE)) {
-          warn_help <- "（収束していない可能性あり）"
-        }
-
-        showNotification(
-          paste0("警告: ", warn_msg, " ", warn_help),
-          type = "warning",
-          duration = 10
-        )
-      })
+      )
     })
 
     # --- エラークリア ---
@@ -2463,8 +2470,8 @@ comparison_server <- function(id, rv) {
       # 基準線
       if (input$show_threshold && !is.na(threshold$good)) {
         p <- p +
-          geom_hline(yintercept = threshold$good, linetype = "dashed", color = "#18bc9c", size = 1) +
-          geom_hline(yintercept = threshold$acceptable, linetype = "dashed", color = "#f39c12", size = 1) +
+          geom_hline(yintercept = threshold$good, linetype = "dashed", color = "#18bc9c", linewidth = 1) +
+          geom_hline(yintercept = threshold$acceptable, linetype = "dashed", color = "#f39c12", linewidth = 1) +
           annotate("text", x = Inf, y = threshold$good, label = "良好", hjust = 1.1, color = "#18bc9c") +
           annotate("text", x = Inf, y = threshold$acceptable, label = "許容", hjust = 1.1, color = "#f39c12")
       }
