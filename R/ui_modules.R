@@ -138,7 +138,7 @@ data_ui <- function(id) {
 
       nav_panel(
         title = "正規性検定",
-        icon = icon("bell-curve", lib = "font-awesome", verify_fa = FALSE),
+        icon = icon("chart-line"),
         card_body(
           tags$h5(class = "mb-3",
             tags$i(class = "fas fa-chart-area me-2"),

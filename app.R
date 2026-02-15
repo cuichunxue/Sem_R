@@ -11,6 +11,26 @@ options(
   warn = 1                               # 警告を即座に表示
 )
 
+# --- パッケージ依存関係チェック ---
+required_packages <- c(
+  "shiny", "bslib", "shinyWidgets", "shinyjs", "DT",
+  "lavaan", "semPlot", "ggplot2", "dplyr", "tidyr",
+  "readr", "readxl", "haven", "corrplot", "colourpicker",
+  "htmltools", "waiter", "jsonlite"
+)
+
+missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+if (length(missing_packages) > 0) {
+  stop(
+    "以下の必須パッケージがインストールされていません:\n  ",
+    paste(missing_packages, collapse = ", "),
+    "\n\n以下のコマンドでインストールしてください:\n  install.packages(c(",
+    paste0('"', missing_packages, '"', collapse = ", "),
+    "))",
+    call. = FALSE
+  )
+}
+
 # --- パッケージ読み込み ---
 suppressPackageStartupMessages({
   library(shiny)
@@ -50,6 +70,15 @@ APP_CONFIG <- list(
 )
 
 # --- カスタムテーマ ---
+# font_google() はインターネット接続がない環境で失敗するため、
+# tryCatch でフォールバックする
+safe_font <- function(google_name, fallback) {
+  tryCatch(
+    font_google(google_name),
+    error = function(e) fallback
+  )
+}
+
 app_theme <- bs_theme(
   version = 5,
   bootswatch = "flatly",
@@ -59,9 +88,9 @@ app_theme <- bs_theme(
   info = "#3498db",
   warning = "#f39c12",
   danger = "#e74c3c",
-  base_font = font_google("Noto Sans JP"),
-  heading_font = font_google("Noto Sans JP"),
-  code_font = font_google("Source Code Pro"),
+  base_font = safe_font("Noto Sans JP", "sans-serif"),
+  heading_font = safe_font("Noto Sans JP", "sans-serif"),
+  code_font = safe_font("Source Code Pro", "monospace"),
   "navbar-bg" = "#2c3e50",
   "body-bg" = "#ecf0f1",
   "card-bg" = "#ffffff"
@@ -314,6 +343,7 @@ server <- function(input, output, session) {
 
   # --- リアクティブ値 ---
   rv <- reactiveValues(
+    parent_session = session,  # モジュールから親ナビゲーションを操作するため
     data = NULL,
     data_name = NULL,
     model_syntax = NULL,

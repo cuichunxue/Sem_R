@@ -328,11 +328,14 @@ data_server <- function(id, rv) {
       )
     })
 
-    # --- 正規性検定 ---
-    output$normality_table <- renderDT({
+    # --- 正規性検定（結果をキャッシュして二重計算を防止） ---
+    normality_result <- reactive({
       req(rv$data)
+      test_normality(rv$data)
+    })
 
-      result <- test_normality(rv$data)
+    output$normality_table <- renderDT({
+      result <- normality_result()
 
       if (is.null(result$univariate)) {
         return(datatable(data.frame(message = result$message)))
@@ -351,9 +354,7 @@ data_server <- function(id, rv) {
     })
 
     output$multivariate_normality <- renderUI({
-      req(rv$data)
-
-      result <- test_normality(rv$data)
+      result <- normality_result()
 
       if (is.null(result$multivariate) || !is.null(result$multivariate$message)) {
         msg <- if (!is.null(result$multivariate$message)) result$multivariate$message else "\u591a\u5909\u91cf\u6b63\u898f\u6027\u691c\u5b9a\u304c\u5b9f\u884c\u3067\u304d\u307e\u305b\u3093"
@@ -1267,8 +1268,10 @@ estimation_server <- function(id, rv) {
           duration = 5
         )
 
-        # 結果タブに移動
-        updateNavbarPage(session, "main_nav", selected = "results_tab")
+        # 結果タブに移動（親セッション経由）
+        if (!is.null(rv$parent_session)) {
+          updateNavbarPage(rv$parent_session, "main_nav", selected = "results_tab")
+        }
 
       }, error = function(e) {
         tryCatch(waiter$hide(), error = function(e2) NULL)
@@ -1284,9 +1287,9 @@ estimation_server <- function(id, rv) {
           tags$div(
             tags$strong("分析エラー"),
             tags$br(),
-            tags$span(error_msg),
-            if (help_msg != "") tags$br(),
-            if (help_msg != "") tags$small(class = "text-info", help_msg)
+            tags$span(translated$message),
+            if (translated$help != "") tags$br(),
+            if (translated$help != "") tags$small(class = "text-info", translated$help)
           ),
           type = "error",
           duration = 15
@@ -1508,10 +1511,12 @@ results_server <- function(id, rv) {
             tags$br(),
             tags$span(class = "value-label", name),
             if (eval_result$judgment != "-") {
-              tags$br()
-              tags$span(
-                class = paste("badge mt-1", gsub("fit-", "bg-", eval_result$class)),
-                eval_result$judgment
+              tagList(
+                tags$br(),
+                tags$span(
+                  class = paste("badge mt-1", gsub("fit-", "bg-", eval_result$class)),
+                  eval_result$judgment
+                )
               )
             }
           )
