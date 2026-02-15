@@ -767,13 +767,13 @@ test_normality <- function(data) {
       if (length(x) > 5000) x <- x[1:5000]
       if (length(x) < 3) return(c(W = NA, p = NA))
       test <- shapiro.test(x)
-      c(W = round(test$statistic, 4), p = round(test$p.value, 4))
+      c(W = round(unname(test$statistic), 4), p = round(test$p.value, 4))
     })
     univariate[["SW\u7d71\u8a08\u91cf"]] <- sw_results["W", ]
-    univariate[["SW_p\u5024"]] <- sw_results["p.W", ]
+    univariate[["SW_p\u5024"]] <- sw_results["p", ]
     univariate[["\u6b63\u898f\u6027"]] <- ifelse(
-      is.na(sw_results["p.W", ]), "-",
-      ifelse(sw_results["p.W", ] >= 0.05, "\u25cb", "\u00d7")
+      is.na(sw_results["p", ]), "-",
+      ifelse(sw_results["p", ] >= 0.05, "\u25cb", "\u00d7")
     )
   }
 
@@ -789,22 +789,33 @@ test_normality <- function(data) {
       centered <- as.matrix(numeric_data) - matrix(colMeans(numeric_data),
                                                     nrow = n_mv, ncol = p, byrow = TRUE)
 
-      # Mahalanobis距離
-      D <- diag(centered %*% S_inv %*% t(centered))
+      # g_ij 行列: g_ij = (x_i - mu)' S^{-1} (x_j - mu)
+      G <- centered %*% S_inv %*% t(centered)
 
-      # 多変量歪度
-      b1p <- mean(outer(D, D, function(x, y) x * y)) / n_mv
-      # 多変量尖度
+      # Mahalanobis距離 (g_ii = D_i)
+      D <- diag(G)
+
+      # Mardia の多変量歪度: b_{1,p} = (1/n^2) * sum_{i,j} g_{ij}^3
+      b1p <- sum(G^3) / (n_mv^2)
+      # Mardia の多変量尖度: b_{2,p} = (1/n) * sum_i D_i^2
       b2p <- mean(D^2)
 
       expected_kurtosis <- p * (p + 2)
+      kurtosis_z <- (b2p - expected_kurtosis) / sqrt(8 * p * (p + 2) / n_mv)
+
+      # 歪度の検定統計量: n * b_{1,p} / 6 ~ chi^2(p(p+1)(p+2)/6)
+      skewness_chi2 <- n_mv * b1p / 6
+      skewness_df <- p * (p + 1) * (p + 2) / 6
+      skewness_p <- pchisq(skewness_chi2, df = skewness_df, lower.tail = FALSE)
 
       list(
         mardia_skewness = round(b1p, 3),
+        skewness_chi2 = round(skewness_chi2, 3),
+        skewness_p = round(skewness_p, 4),
         mardia_kurtosis = round(b2p, 3),
         expected_kurtosis = round(expected_kurtosis, 3),
-        kurtosis_z = round((b2p - expected_kurtosis) / sqrt(8 * p * (p + 2) / n_mv), 3),
-        interpretation = if (abs((b2p - expected_kurtosis) / sqrt(8 * p * (p + 2) / n_mv)) < 1.96) {
+        kurtosis_z = round(kurtosis_z, 3),
+        interpretation = if (abs(kurtosis_z) < 1.96 && skewness_p >= 0.05) {
           "\u591a\u5909\u91cf\u6b63\u898f\u6027\u306e\u4eee\u5b9a\u3092\u68c4\u5374\u3067\u304d\u307e\u305b\u3093"
         } else {
           "\u591a\u5909\u91cf\u6b63\u898f\u6027\u304b\u3089\u306e\u9038\u8131\u304c\u793a\u5506\u3055\u308c\u307e\u3059\u3002MLR\u307e\u305f\u306fWLSMV\u306e\u4f7f\u7528\u3092\u691c\u8a0e\u3057\u3066\u304f\u3060\u3055\u3044"

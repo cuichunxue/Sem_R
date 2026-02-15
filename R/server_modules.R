@@ -368,9 +368,12 @@ data_server <- function(id, rv) {
         tags$table(
           class = "table table-sm",
           tags$tbody(
+            tags$tr(tags$td(tags$strong("\u591a\u5909\u91cf\u6b6a\u5ea6")), tags$td(mv$mardia_skewness)),
+            tags$tr(tags$td(tags$strong("\u6b6a\u5ea6 \u03c7\u00b2")), tags$td(mv$skewness_chi2)),
+            tags$tr(tags$td(tags$strong("\u6b6a\u5ea6 p\u5024")), tags$td(mv$skewness_p)),
             tags$tr(tags$td(tags$strong("\u591a\u5909\u91cf\u5c16\u5ea6")), tags$td(mv$mardia_kurtosis)),
             tags$tr(tags$td(tags$strong("\u671f\u5f85\u5024")), tags$td(mv$expected_kurtosis)),
-            tags$tr(tags$td(tags$strong("z\u5024")), tags$td(mv$kurtosis_z)),
+            tags$tr(tags$td(tags$strong("\u5c16\u5ea6 z\u5024")), tags$td(mv$kurtosis_z)),
             tags$tr(tags$td(tags$strong("\u89e3\u91c8")), tags$td(mv$interpretation))
           )
         )
