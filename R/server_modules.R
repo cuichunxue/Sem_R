@@ -9,6 +9,12 @@ data_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # --- 数値データのリアクティブキャッシュ ---
+    numeric_data <- reactive({
+      req(rv$data)
+      rv$data[, sapply(rv$data, is.numeric), drop = FALSE]
+    })
+
     # --- ファイルアップロード ---
     observeEvent(input$file_upload, {
       req(input$file_upload)
@@ -92,7 +98,7 @@ data_server <- function(id, rv) {
     output$data_info <- renderUI({
       req(rv$data)
 
-      n_numeric <- sum(sapply(rv$data, is.numeric))
+      n_numeric <- ncol(numeric_data())
       n_missing <- sum(is.na(rv$data))
 
       tags$div(
@@ -176,62 +182,52 @@ data_server <- function(id, rv) {
     output$cor_plot <- renderPlot({
       req(rv$data)
 
-      numeric_data <- rv$data[, sapply(rv$data, is.numeric), drop = FALSE]
-      req(ncol(numeric_data) >= 2)
+      num_data <- numeric_data()
+      req(ncol(num_data) >= 2)
 
-      cor_matrix <- cor(numeric_data, use = "pairwise.complete.obs", method = input$cor_method)
+      cor_matrix <- cor(num_data, use = "pairwise.complete.obs", method = input$cor_method)
 
-      # 有意性検定
+      # corrplot 共通パラメータ
+      cor_params <- list(
+        corr = cor_matrix,
+        method = "color",
+        type = "upper",
+        order = "hclust",
+        tl.col = "black",
+        tl.srt = 45,
+        addCoef.col = "black",
+        number.cex = 0.7,
+        col = colorRampPalette(c("#e74c3c", "white", "#3498db"))(200)
+      )
+
+      # 有意性検定（ベクトル化で高速化）
       if (input$cor_sig) {
-        n <- nrow(numeric_data)
-        p_matrix <- matrix(NA, nrow = ncol(numeric_data), ncol = ncol(numeric_data))
-        for (i in 1:ncol(numeric_data)) {
-          for (j in 1:ncol(numeric_data)) {
-            if (i != j) {
-              test <- cor.test(numeric_data[[i]], numeric_data[[j]], method = input$cor_method)
-              p_matrix[i, j] <- test$p.value
-            }
+        nc <- ncol(num_data)
+        p_matrix <- matrix(NA, nrow = nc, ncol = nc)
+        for (i in 1:(nc - 1)) {
+          for (j in (i + 1):nc) {
+            test <- cor.test(num_data[[i]], num_data[[j]], method = input$cor_method)
+            p_matrix[i, j] <- test$p.value
+            p_matrix[j, i] <- test$p.value
           }
         }
-
-        corrplot(
-          cor_matrix,
-          method = "color",
-          type = "upper",
-          order = "hclust",
-          tl.col = "black",
-          tl.srt = 45,
-          addCoef.col = "black",
-          number.cex = 0.7,
-          p.mat = p_matrix,
-          sig.level = 0.05,
-          insig = "label_sig",
-          pch.cex = 1.5,
-          col = colorRampPalette(c("#e74c3c", "white", "#3498db"))(200)
-        )
-      } else {
-        corrplot(
-          cor_matrix,
-          method = "color",
-          type = "upper",
-          order = "hclust",
-          tl.col = "black",
-          tl.srt = 45,
-          addCoef.col = "black",
-          number.cex = 0.7,
-          col = colorRampPalette(c("#e74c3c", "white", "#3498db"))(200)
-        )
+        cor_params$p.mat <- p_matrix
+        cor_params$sig.level <- 0.05
+        cor_params$insig <- "label_sig"
+        cor_params$pch.cex <- 1.5
       }
+
+      do.call(corrplot, cor_params)
     })
 
     # --- 相関行列テーブル ---
     output$cor_table <- renderDT({
       req(rv$data)
 
-      numeric_data <- rv$data[, sapply(rv$data, is.numeric), drop = FALSE]
-      req(ncol(numeric_data) >= 2)
+      num_data <- numeric_data()
+      req(ncol(num_data) >= 2)
 
-      cor_matrix <- cor(numeric_data, use = "pairwise.complete.obs", method = input$cor_method)
+      cor_matrix <- cor(num_data, use = "pairwise.complete.obs", method = input$cor_method)
       cor_df <- as.data.frame(round(cor_matrix, 3))
       cor_df <- cbind(変数 = rownames(cor_df), cor_df)
 
@@ -1091,23 +1087,44 @@ estimation_server <- function(id, rv) {
         # 推定オプションの設定
         bootstrap_n <- if (input$se == "bootstrap") input$bootstrap_n else NULL
 
-        # lavaan実行
-        fit <- sem(
-          model = rv$model_syntax,
-          data = rv$data,
-          estimator = input$estimator,
-          missing = input$missing,
-          se = input$se,
-          bootstrap = bootstrap_n,
-          std.lv = input$std_lv,
-          fixed.x = input$fixed_x,
-          meanstructure = input$meanstructure,
-          orthogonal = input$orthogonal
+        # lavaan実行（withCallingHandlers で警告を捕捉しつつ実行を継続）
+        fit <- withCallingHandlers(
+          sem(
+            model = rv$model_syntax,
+            data = rv$data,
+            estimator = input$estimator,
+            missing = input$missing,
+            se = input$se,
+            bootstrap = bootstrap_n,
+            std.lv = input$std_lv,
+            fixed.x = input$fixed_x,
+            meanstructure = input$meanstructure,
+            orthogonal = input$orthogonal
+          ),
+          warning = function(w) {
+            warn_msg <- w$message
+            warn_help <- ""
+
+            if (grepl("negative variance", warn_msg, ignore.case = TRUE)) {
+              warn_help <- "（Heywoodケース: モデルの再検討を推奨）"
+            } else if (grepl("not converged", warn_msg, ignore.case = TRUE)) {
+              warn_help <- "（収束していない可能性あり）"
+            }
+
+            showNotification(
+              paste0("警告: ", warn_msg, " ", warn_help),
+              type = "warning",
+              duration = 10
+            )
+            invokeRestart("muffleWarning")
+          }
         )
 
         rv$fit <- fit
         rv$fit_summary <- summary(fit, standardized = TRUE, fit.measures = TRUE)
         rv$estimation_complete <- TRUE
+        rv$error_message <- NULL
+        rv$error_help <- NULL
 
         waiter$hide()
 
@@ -1117,8 +1134,8 @@ estimation_server <- function(id, rv) {
           duration = 5
         )
 
-        # 結果タブに移動
-        updateNavbarPage(session, "main_nav", selected = "results_tab")
+        # 結果タブに移動（親セッション経由で正しく動作させる）
+        session$sendCustomMessage("navigateTab", "results_tab")
 
       }, error = function(e) {
         waiter$hide()
@@ -1155,22 +1172,6 @@ estimation_server <- function(id, rv) {
           ),
           type = "error",
           duration = 15
-        )
-      }, warning = function(w) {
-        # 警告メッセージも日本語で補足
-        warn_msg <- w$message
-        warn_help <- ""
-
-        if (grepl("negative variance", warn_msg, ignore.case = TRUE)) {
-          warn_help <- "（Heywoodケース: モデルの再検討を推奨）"
-        } else if (grepl("not converged", warn_msg, ignore.case = TRUE)) {
-          warn_help <- "（収束していない可能性あり）"
-        }
-
-        showNotification(
-          paste0("警告: ", warn_msg, " ", warn_help),
-          type = "warning",
-          duration = 10
         )
       })
     })
@@ -1347,11 +1348,22 @@ results_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # --- リアクティブキャッシュ（重複計算を排除）---
+    cached_fit_measures <- reactive({
+      req(rv$fit)
+      fitMeasures(rv$fit)
+    })
+
+    cached_params <- reactive({
+      req(rv$fit)
+      parameterEstimates(rv$fit, standardized = TRUE)
+    })
+
     # --- 適合度サマリーカード ---
     output$fit_summary_cards <- renderUI({
       req(rv$fit)
 
-      fm <- fitMeasures(rv$fit)
+      fm <- cached_fit_measures()
 
       create_fit_card <- function(name, value, good_threshold = NULL, direction = "lower") {
         formatted <- if (name %in% c("df")) {
@@ -1373,10 +1385,12 @@ results_server <- function(id, rv) {
             tags$br(),
             tags$span(class = "value-label", name),
             if (eval_result$judgment != "-") {
-              tags$br()
-              tags$span(
-                class = paste("badge mt-1", gsub("fit-", "bg-", eval_result$class)),
-                eval_result$judgment
+              tagList(
+                tags$br(),
+                tags$span(
+                  class = paste("badge mt-1", gsub("fit-", "bg-", eval_result$class)),
+                  eval_result$judgment
+                )
               )
             }
           )
@@ -1415,7 +1429,7 @@ results_server <- function(id, rv) {
     output$loadings_table <- renderDT({
       req(rv$fit)
 
-      params <- parameterEstimates(rv$fit, standardized = TRUE)
+      params <- cached_params()
       loadings <- params[params$op == "=~", ]
 
       if (nrow(loadings) == 0) {
@@ -1431,7 +1445,9 @@ results_server <- function(id, rv) {
             標準化 = std.all,
             標準誤差 = se,
             z値 = z,
-            p値 = pvalue
+            p値 = pvalue,
+            `95%CI下限` = ci.lower,
+            `95%CI上限` = ci.upper
           )
       } else {
         result <- loadings %>%
@@ -1441,7 +1457,9 @@ results_server <- function(id, rv) {
             推定値 = est,
             標準誤差 = se,
             z値 = z,
-            p値 = pvalue
+            p値 = pvalue,
+            `95%CI下限` = ci.lower,
+            `95%CI上限` = ci.upper
           )
       }
 
@@ -1466,7 +1484,7 @@ results_server <- function(id, rv) {
     output$regressions_table <- renderDT({
       req(rv$fit)
 
-      params <- parameterEstimates(rv$fit, standardized = TRUE)
+      params <- cached_params()
       regressions <- params[params$op == "~", ]
 
       if (nrow(regressions) == 0) {
@@ -1482,7 +1500,9 @@ results_server <- function(id, rv) {
             標準化 = std.all,
             標準誤差 = se,
             z値 = z,
-            p値 = pvalue
+            p値 = pvalue,
+            `95%CI下限` = ci.lower,
+            `95%CI上限` = ci.upper
           )
       } else {
         result <- regressions %>%
@@ -1492,7 +1512,9 @@ results_server <- function(id, rv) {
             推定値 = est,
             標準誤差 = se,
             z値 = z,
-            p値 = pvalue
+            p値 = pvalue,
+            `95%CI下限` = ci.lower,
+            `95%CI上限` = ci.upper
           )
       }
 
@@ -1517,7 +1539,7 @@ results_server <- function(id, rv) {
     output$covariances_table <- renderDT({
       req(rv$fit)
 
-      params <- parameterEstimates(rv$fit, standardized = TRUE)
+      params <- cached_params()
       covariances <- params[params$op == "~~" & params$lhs != params$rhs, ]
 
       if (nrow(covariances) == 0) {
@@ -1552,7 +1574,7 @@ results_server <- function(id, rv) {
     output$variances_table <- renderDT({
       req(rv$fit)
 
-      params <- parameterEstimates(rv$fit, standardized = TRUE)
+      params <- cached_params()
       variances <- params[params$op == "~~" & params$lhs == params$rhs, ]
 
       if (nrow(variances) == 0) {
@@ -1586,7 +1608,7 @@ results_server <- function(id, rv) {
     output$defined_table <- renderDT({
       req(rv$fit)
 
-      params <- parameterEstimates(rv$fit, standardized = TRUE)
+      params <- cached_params()
       defined <- params[params$op == ":=", ]
 
       if (nrow(defined) == 0) {
@@ -1625,7 +1647,7 @@ results_server <- function(id, rv) {
     output$all_params_table <- renderDT({
       req(rv$fit)
 
-      params <- parameterEstimates(rv$fit, standardized = TRUE)
+      params <- cached_params()
 
       if (input$std_all) {
         result <- params %>%
@@ -1718,6 +1740,46 @@ results_server <- function(id, rv) {
       })
     })
 
+    # --- R²（決定係数）テーブル ---
+    output$rsquare_table <- renderDT({
+      req(rv$fit)
+
+      tryCatch({
+        r2 <- lavInspect(rv$fit, "rsquare")
+        if (length(r2) == 0) {
+          return(datatable(data.frame(message = "R²を計算できません（内生変数がありません）")))
+        }
+
+        result <- data.frame(
+          変数 = names(r2),
+          `R²` = round(r2, 3),
+          `説明率(%)` = round(r2 * 100, 1),
+          row.names = NULL,
+          check.names = FALSE
+        )
+
+        datatable(
+          result,
+          options = list(
+            dom = 't',
+            pageLength = 50,
+            ordering = TRUE
+          ),
+          rownames = FALSE,
+          class = 'table-striped table-bordered'
+        ) %>%
+          formatStyle(
+            'R²',
+            background = styleColorBar(c(0, 1), '#3498db'),
+            backgroundSize = '100% 90%',
+            backgroundRepeat = 'no-repeat',
+            backgroundPosition = 'center'
+          )
+      }, error = function(e) {
+        datatable(data.frame(message = paste("R²の計算中にエラー:", e$message)))
+      })
+    })
+
     # --- lavaan詳細出力 ---
     output$lavaan_summary <- renderPrint({
       req(rv$fit)
@@ -1738,10 +1800,24 @@ results_server <- function(id, rv) {
   })
 }
 
+# --- HTML エスケープヘルパー ---
+html_escape <- function(text) {
+  if (is.null(text)) return("")
+  text <- gsub("&", "&amp;", text, fixed = TRUE)
+  text <- gsub("<", "&lt;", text, fixed = TRUE)
+  text <- gsub(">", "&gt;", text, fixed = TRUE)
+  text <- gsub('"', "&quot;", text, fixed = TRUE)
+  text <- gsub("'", "&#39;", text, fixed = TRUE)
+  text
+}
+
 # --- HTMLレポート生成 ---
 generate_html_report <- function(fit, model_syntax, data_name) {
   fm <- fitMeasures(fit)
   params <- parameterEstimates(fit, standardized = TRUE)
+
+  # R² の取得
+  r2 <- tryCatch(lavInspect(fit, "rsquare"), error = function(e) NULL)
 
   html <- paste0('
 <!DOCTYPE html>
@@ -1767,10 +1843,10 @@ generate_html_report <- function(fit, model_syntax, data_name) {
 <body>
   <h1>SEM Analysis Report</h1>
   <p class="meta">Generated: ', format(Sys.time(), "%Y-%m-%d %H:%M:%S"), '</p>
-  <p class="meta">Data: ', data_name, '</p>
+  <p class="meta">Data: ', html_escape(data_name), '</p>
 
   <h2>Model Syntax</h2>
-  <pre>', model_syntax, '</pre>
+  <pre>', html_escape(model_syntax), '</pre>
 
   <h2>Fit Indices</h2>
   <table>
@@ -1788,22 +1864,44 @@ generate_html_report <- function(fit, model_syntax, data_name) {
 
   <h2>Parameter Estimates</h2>
   <table>
-    <tr><th>Path</th><th>Estimate</th><th>Std.All</th><th>SE</th><th>z</th><th>p</th></tr>')
+    <tr><th>Path</th><th>Estimate</th><th>Std.All</th><th>SE</th><th>z</th><th>p</th><th>95% CI</th></tr>')
 
   for (i in 1:nrow(params)) {
+    ci_text <- sprintf("[%.3f, %.3f]", params$ci.lower[i], params$ci.upper[i])
     html <- paste0(html, '
     <tr>
-      <td>', params$lhs[i], ' ', params$op[i], ' ', params$rhs[i], '</td>
+      <td>', html_escape(paste(params$lhs[i], params$op[i], params$rhs[i])), '</td>
       <td>', sprintf("%.3f", params$est[i]), '</td>
       <td>', sprintf("%.3f", params$std.all[i]), '</td>
       <td>', sprintf("%.3f", params$se[i]), '</td>
       <td>', sprintf("%.3f", params$z[i]), '</td>
       <td>', sprintf("%.4f", params$pvalue[i]), '</td>
+      <td>', ci_text, '</td>
     </tr>')
   }
 
   html <- paste0(html, '
-  </table>
+  </table>')
+
+  # R² セクション
+  if (!is.null(r2) && length(r2) > 0) {
+    html <- paste0(html, '
+  <h2>R-squared</h2>
+  <table>
+    <tr><th>Variable</th><th>R&sup2;</th><th>Explained (%)</th></tr>')
+    for (i in seq_along(r2)) {
+      html <- paste0(html, '
+    <tr>
+      <td>', html_escape(names(r2)[i]), '</td>
+      <td>', sprintf("%.3f", r2[i]), '</td>
+      <td>', sprintf("%.1f%%", r2[i] * 100), '</td>
+    </tr>')
+    }
+    html <- paste0(html, '
+  </table>')
+  }
+
+  html <- paste0(html, '
 </body>
 </html>')
 
@@ -1817,60 +1915,52 @@ diagram_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # --- パス図描画パラメータ（重複排除）---
+    diagram_params <- reactive({
+      safe <- function(x, default) if (is.null(x)) default else x
+      what_val <- safe(input$what, "std")
+      what_param <- switch(what_val, "std" = "std", "est" = "est", "par" = "par", "nothing" = "nothing", "std")
+      node_size <- safe(input$node_size, 8)
+
+      list(
+        what = what_param,
+        whatLabels = what_param,
+        layout = safe(input$layout, "tree"),
+        style = "lisrel",
+        residuals = safe(input$residuals, TRUE),
+        intercepts = safe(input$intercepts, FALSE),
+        thresholds = safe(input$thresholds, FALSE),
+        nCharNodes = 0,
+        nCharEdges = 0,
+        sizeMan = node_size,
+        sizeLat = node_size * 1.2,
+        edge.label.cex = safe(input$label_size, 1),
+        edge.width = safe(input$edge_size, 1),
+        curve = 2,
+        curvePivot = TRUE,
+        mar = c(2, 2, 2, 2),
+        color = list(
+          lat = safe(input$lat_color, "#3498db"),
+          man = safe(input$man_color, "#2ecc71")
+        ),
+        border.color = "#2c3e50",
+        edge.color = "#34495e",
+        label.color = "#2c3e50"
+      )
+    })
+
+    # --- semPaths 描画ヘルパー ---
+    draw_sem_diagram <- function(fit, params) {
+      args <- c(list(object = fit), params)
+      do.call(semPaths, args)
+    }
+
     # --- パス図 ---
     output$sem_diagram <- renderPlot({
       req(rv$fit)
-
-      # 入力値の安全な取得（デフォルト値付き）
-      what_val <- if (is.null(input$what)) "std" else input$what
-      layout_val <- if (is.null(input$layout)) "tree" else input$layout
-      residuals_val <- if (is.null(input$residuals)) TRUE else input$residuals
-      intercepts_val <- if (is.null(input$intercepts)) FALSE else input$intercepts
-      thresholds_val <- if (is.null(input$thresholds)) FALSE else input$thresholds
-      node_size_val <- if (is.null(input$node_size)) 8 else input$node_size
-      edge_size_val <- if (is.null(input$edge_size)) 1 else input$edge_size
-      label_size_val <- if (is.null(input$label_size)) 1 else input$label_size
-      lat_color_val <- if (is.null(input$lat_color)) "#3498db" else input$lat_color
-      man_color_val <- if (is.null(input$man_color)) "#2ecc71" else input$man_color
-
-      what_param <- switch(
-        what_val,
-        "std" = "std",
-        "est" = "est",
-        "par" = "par",
-        "nothing" = "nothing",
-        "std"  # デフォルト
-      )
-
       tryCatch({
-        semPaths(
-          rv$fit,
-          what = what_param,
-          whatLabels = what_param,
-          layout = layout_val,
-          style = "lisrel",
-          residuals = residuals_val,
-          intercepts = intercepts_val,
-          thresholds = thresholds_val,
-          nCharNodes = 0,
-          nCharEdges = 0,
-          sizeMan = node_size_val,
-          sizeLat = node_size_val * 1.2,
-          edge.label.cex = label_size_val,
-          edge.width = edge_size_val,
-          curve = 2,
-          curvePivot = TRUE,
-          mar = c(2, 2, 2, 2),
-          color = list(
-            lat = lat_color_val,
-            man = man_color_val
-          ),
-          border.color = "#2c3e50",
-          edge.color = "#34495e",
-          label.color = "#2c3e50"
-        )
+        draw_sem_diagram(rv$fit, diagram_params())
       }, error = function(e) {
-        # エラー時はメッセージを表示
         plot.new()
         plot.window(xlim = c(0, 1), ylim = c(0, 1))
         text(0.5, 0.5,
@@ -1882,26 +1972,15 @@ diagram_server <- function(id, rv) {
     # --- パス図ダウンロード ---
     output$download_diagram <- downloadHandler(
       filename = function() {
-        paste0("sem_diagram_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".", input$download_format)
+        format_val <- if (is.null(input$download_format)) "png" else input$download_format
+        paste0("sem_diagram_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".", format_val)
       },
       content = function(file) {
         req(rv$fit)
 
-        # 入力値の安全な取得
-        what_val <- if (is.null(input$what)) "std" else input$what
-        layout_val <- if (is.null(input$layout)) "tree" else input$layout
         format_val <- if (is.null(input$download_format)) "png" else input$download_format
         width_val <- if (is.null(input$download_width)) 10 else input$download_width
         height_val <- if (is.null(input$download_height)) 8 else input$download_height
-
-        what_param <- switch(
-          what_val,
-          "std" = "std",
-          "est" = "est",
-          "par" = "par",
-          "nothing" = "nothing",
-          "std"
-        )
 
         if (format_val == "png") {
           png(file, width = width_val, height = height_val, units = "in", res = 300)
@@ -1912,32 +1991,7 @@ diagram_server <- function(id, rv) {
         }
 
         tryCatch({
-          semPaths(
-            rv$fit,
-            what = what_param,
-            whatLabels = what_param,
-            layout = layout_val,
-            style = "lisrel",
-            residuals = if (is.null(input$residuals)) TRUE else input$residuals,
-            intercepts = if (is.null(input$intercepts)) FALSE else input$intercepts,
-            thresholds = if (is.null(input$thresholds)) FALSE else input$thresholds,
-            nCharNodes = 0,
-            nCharEdges = 0,
-            sizeMan = if (is.null(input$node_size)) 8 else input$node_size,
-            sizeLat = (if (is.null(input$node_size)) 8 else input$node_size) * 1.2,
-            edge.label.cex = if (is.null(input$label_size)) 1 else input$label_size,
-            edge.width = if (is.null(input$edge_size)) 1 else input$edge_size,
-            curve = 2,
-            curvePivot = TRUE,
-            mar = c(2, 2, 2, 2),
-            color = list(
-              lat = if (is.null(input$lat_color)) "#3498db" else input$lat_color,
-              man = if (is.null(input$man_color)) "#2ecc71" else input$man_color
-            ),
-            border.color = "#2c3e50",
-            edge.color = "#34495e",
-            label.color = "#2c3e50"
-          )
+          draw_sem_diagram(rv$fit, diagram_params())
         }, error = function(e) {
           plot.new()
           text(0.5, 0.5, paste0("エラー: ", e$message), cex = 1)

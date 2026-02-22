@@ -28,10 +28,9 @@ required_packages <- c(
   "corrplot",
   "colourpicker",
 
-  # レポート生成
-  "knitr",
-  "kableExtra",
+  # HTML/JSON
   "htmltools",
+  "jsonlite",
 
   # テスト
   "testthat"

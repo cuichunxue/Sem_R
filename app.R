@@ -7,9 +7,10 @@
 # --- 設定 ---
 options(
   shiny.maxRequestSize = 50 * 1024^2,  # 最大50MBのファイルアップロード
-  shiny.sanitize.errors = TRUE,         # エラーメッセージのサニタイズ
+  shiny.sanitize.errors = TRUE,         # エラーメッセージのサニタイズ（本番用）
   warn = 1                               # 警告を即座に表示
 )
+# digits と scipen は global.R で設定済み
 
 # --- パッケージ読み込み ---
 suppressPackageStartupMessages({
@@ -194,6 +195,14 @@ ui <- page_navbar(
       // 分析完了時のスクリーンリーダー通知
       Shiny.addCustomMessageHandler('announceMessage', function(message) {
         announceToSR(message);
+      });
+
+      // タブ遷移ハンドラ（モジュール内からの遷移対応）
+      Shiny.addCustomMessageHandler('navigateTab', function(tabValue) {
+        Shiny.setInputValue('main_nav', tabValue, {priority: 'event'});
+        // bslib navbarのタブを直接切り替え
+        var tabLink = document.querySelector('[data-value=\"' + tabValue + '\"]');
+        if (tabLink) tabLink.click();
       });
     ", jsonlite::toJSON(APP_CONFIG, auto_unbox = TRUE)))),
 

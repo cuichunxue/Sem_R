@@ -714,6 +714,20 @@ results_ui <- function(id) {
       )
     ),
 
+    # R²（決定係数）
+    fluidRow(
+      column(12,
+        card(
+          card_header(
+            tags$span(tags$i(class = "fas fa-bullseye me-2"), "R²（決定係数）")
+          ),
+          card_body(
+            DTOutput(ns("rsquare_table"))
+          )
+        )
+      )
+    ),
+
     # 修正指標
     fluidRow(
       column(12,
