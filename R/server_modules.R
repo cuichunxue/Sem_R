@@ -891,8 +891,9 @@ model_server <- function(id, rv) {
 
     # --- テンプレートカード ---
     output$template_cards <- renderUI({
+      template_type <- if (is.null(input$template_type)) "cfa" else input$template_type
       templates <- switch(
-        input$template_type,
+        template_type,
         "cfa" = model_templates[c("cfa_1factor", "cfa_2factor", "cfa_3factor")],
         "sem" = model_templates[c("sem_basic", "sem_mediation")],
         "path" = model_templates[c("path_analysis")],
@@ -1134,8 +1135,8 @@ estimation_server <- function(id, rv) {
           duration = 5
         )
 
-        # 結果タブに移動（親セッション経由で正しく動作させる）
-        session$sendCustomMessage("navigateTab", "results_tab")
+        # 結果タブに移動（rv経由でapp.Rの親observerに通知）
+        rv$navigate_to <- "results_tab"
 
       }, error = function(e) {
         waiter$hide()
@@ -1275,34 +1276,41 @@ estimation_server <- function(id, rv) {
 
     # --- 設定プレビュー ---
     output$settings_preview <- renderUI({
+      # タブ未表示時にinputがNULLになるため安全にデフォルト値を使用
+      estimator_val <- if (is.null(input$estimator)) "ML" else input$estimator
+      missing_val <- if (is.null(input$missing)) "listwise" else input$missing
+      se_val <- if (is.null(input$se)) "standard" else input$se
+      std_lv_val <- isTRUE(input$std_lv)
+      meanstructure_val <- isTRUE(input$meanstructure)
+
       tags$table(
         class = "table table-sm mb-0",
         tags$tbody(
           tags$tr(
             tags$td(tags$strong("推定方法")),
-            tags$td(input$estimator)
+            tags$td(estimator_val)
           ),
           tags$tr(
             tags$td(tags$strong("欠損値処理")),
-            tags$td(input$missing)
+            tags$td(missing_val)
           ),
           tags$tr(
             tags$td(tags$strong("標準誤差")),
-            tags$td(input$se)
+            tags$td(se_val)
           ),
-          if (input$se == "bootstrap") {
+          if (se_val == "bootstrap") {
             tags$tr(
               tags$td(tags$strong("ブートストラップ回数")),
-              tags$td(input$bootstrap_n)
+              tags$td(if (is.null(input$bootstrap_n)) 1000 else input$bootstrap_n)
             )
           },
           tags$tr(
             tags$td(tags$strong("潜在変数分散=1")),
-            tags$td(if (input$std_lv) "はい" else "いいえ")
+            tags$td(if (std_lv_val) "はい" else "いいえ")
           ),
           tags$tr(
             tags$td(tags$strong("平均構造")),
-            tags$td(if (input$meanstructure) "推定" else "なし")
+            tags$td(if (meanstructure_val) "推定" else "なし")
           )
         )
       )
@@ -1800,9 +1808,17 @@ results_server <- function(id, rv) {
   })
 }
 
+# --- 安全なフォーマットヘルパー ---
+safe_sprintf <- function(fmt, value) {
+  if (is.null(value) || is.na(value)) return("NA")
+  sprintf(fmt, value)
+}
+
 # --- HTML エスケープヘルパー ---
 html_escape <- function(text) {
-  if (is.null(text)) return("")
+  if (is.null(text) || length(text) == 0) return("")
+  text <- as.character(text)
+  if (is.na(text) || length(text) != 1) return("")
   text <- gsub("&", "&amp;", text, fixed = TRUE)
   text <- gsub("<", "&lt;", text, fixed = TRUE)
   text <- gsub(">", "&gt;", text, fixed = TRUE)

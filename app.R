@@ -7,7 +7,7 @@
 # --- 設定 ---
 options(
   shiny.maxRequestSize = 50 * 1024^2,  # 最大50MBのファイルアップロード
-  shiny.sanitize.errors = TRUE,         # エラーメッセージのサニタイズ（本番用）
+  shiny.sanitize.errors = FALSE,        # デバッグ中: エラーメッセージ表示
   warn = 1                               # 警告を即座に表示
 )
 # digits と scipen は global.R で設定済み
@@ -35,9 +35,9 @@ suppressPackageStartupMessages({
 })
 
 # --- ソースファイル読み込み ---
-source("R/utils.R")
-source("R/ui_modules.R")
-source("R/server_modules.R")
+source("R/utils.R", encoding = "UTF-8")
+source("R/ui_modules.R", encoding = "UTF-8")
+source("R/server_modules.R", encoding = "UTF-8")
 
 # --- アプリケーション設定 ---
 APP_CONFIG <- list(
@@ -332,6 +332,7 @@ server <- function(input, output, session) {
     error_message = NULL,
     error_help = NULL,
     saved_models = list(),
+    navigate_to = NULL,
     session_start = Sys.time()
   )
 
@@ -397,6 +398,13 @@ server <- function(input, output, session) {
     if (!is.null(rv$error_message) && rv$error_message != "") {
       log_event("Error", rv$error_message)
     }
+  })
+
+  # --- タブ遷移（モジュール内からの要求を親セッションで実行）---
+  observeEvent(rv$navigate_to, {
+    req(rv$navigate_to)
+    session$sendCustomMessage("navigateTab", rv$navigate_to)
+    rv$navigate_to <- NULL
   })
 
   # --- 分析完了時のスクリーンリーダー通知 ---
