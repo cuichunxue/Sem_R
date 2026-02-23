@@ -96,7 +96,7 @@ ui <- page_navbar(
       tags$meta(name = "theme-color", content = "#2c3e50"),
 
       # ファビコン
-      tags$link(rel = "icon", type = "image/svg+xml", href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>"),
+      tags$link(rel = "icon", href = "data:image/x-icon;,"),
 
       # Font Awesome
       tags$link(
@@ -235,7 +235,7 @@ ui <- page_navbar(
         paste0(APP_CONFIG$name, " v", APP_CONFIG$version),
         " | Powered by ",
         tags$a(href = "https://lavaan.ugent.be/", target = "_blank", class = "text-info", "lavaan"),
-        " ", packageVersion("lavaan")
+        " ", as.character(packageVersion("lavaan"))
       ),
       tags$span(
         tags$kbd("Ctrl+Enter"), " 分析実行 | ",
