@@ -7,7 +7,7 @@
 # --- 設定 ---
 options(
   shiny.maxRequestSize = 50 * 1024^2,  # 最大50MBのファイルアップロード
-  shiny.sanitize.errors = FALSE,        # デバッグ中: エラーメッセージ表示
+  shiny.sanitize.errors = FALSE,        # デバッグ中: FALSE / 本番: TRUE に変更
   warn = 1                               # 警告を即座に表示
 )
 # digits と scipen は global.R で設定済み
@@ -35,9 +35,9 @@ suppressPackageStartupMessages({
 })
 
 # --- ソースファイル読み込み ---
-source("R/utils.R", encoding = "UTF-8")
-source("R/ui_modules.R", encoding = "UTF-8")
-source("R/server_modules.R", encoding = "UTF-8")
+source("R/utils.R")
+source("R/ui_modules.R")
+source("R/server_modules.R")
 
 # --- アプリケーション設定 ---
 APP_CONFIG <- list(
@@ -196,15 +196,21 @@ ui <- page_navbar(
       Shiny.addCustomMessageHandler('announceMessage', function(message) {
         announceToSR(message);
       });
-
-      // タブ遷移ハンドラ（モジュール内からの遷移対応）
-      Shiny.addCustomMessageHandler('navigateTab', function(tabValue) {
-        Shiny.setInputValue('main_nav', tabValue, {priority: 'event'});
-        // bslib navbarのタブを直接切り替え
-        var tabLink = document.querySelector('[data-value=\"' + tabValue + '\"]');
-        if (tabLink) tabLink.click();
-      });
     ", jsonlite::toJSON(APP_CONFIG, auto_unbox = TRUE)))),
+
+      # タブ遷移ハンドラ（別scriptブロックでsprintfの影響を排除）
+      tags$script(HTML("
+        Shiny.addCustomMessageHandler('navigateTab', function(tabValue) {
+          Shiny.setInputValue('main_nav', tabValue, {priority: 'event'});
+          var links = document.querySelectorAll('[data-value]');
+          for (var i = 0; i < links.length; i++) {
+            if (links[i].getAttribute('data-value') === tabValue) {
+              links[i].click();
+              break;
+            }
+          }
+        });
+      ")),
 
       useShinyjs(),
       useWaiter(),

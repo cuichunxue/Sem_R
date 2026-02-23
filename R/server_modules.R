@@ -1748,19 +1748,19 @@ results_server <- function(id, rv) {
       })
     })
 
-    # --- R²（決定係数）テーブル ---
+    # --- R2（決定係数）テーブル ---
     output$rsquare_table <- renderDT({
       req(rv$fit)
 
       tryCatch({
         r2 <- lavInspect(rv$fit, "rsquare")
         if (length(r2) == 0) {
-          return(datatable(data.frame(message = "R²を計算できません（内生変数がありません）")))
+          return(datatable(data.frame(message = "R2 を計算できません（内生変数がありません）")))
         }
 
         result <- data.frame(
           変数 = names(r2),
-          `R²` = round(r2, 3),
+          R2 = round(r2, 3),
           `説明率(%)` = round(r2 * 100, 1),
           row.names = NULL,
           check.names = FALSE
@@ -1777,14 +1777,14 @@ results_server <- function(id, rv) {
           class = 'table-striped table-bordered'
         ) %>%
           formatStyle(
-            'R²',
+            'R2',
             background = styleColorBar(c(0, 1), '#3498db'),
             backgroundSize = '100% 90%',
             backgroundRepeat = 'no-repeat',
             backgroundPosition = 'center'
           )
       }, error = function(e) {
-        datatable(data.frame(message = paste("R²の計算中にエラー:", e$message)))
+        datatable(data.frame(message = paste("R2 の計算中にエラー:", e$message)))
       })
     })
 
@@ -1832,7 +1832,7 @@ generate_html_report <- function(fit, model_syntax, data_name) {
   fm <- fitMeasures(fit)
   params <- parameterEstimates(fit, standardized = TRUE)
 
-  # R² の取得
+  # R2 の取得
   r2 <- tryCatch(lavInspect(fit, "rsquare"), error = function(e) NULL)
 
   html <- paste0('
@@ -1899,7 +1899,7 @@ generate_html_report <- function(fit, model_syntax, data_name) {
   html <- paste0(html, '
   </table>')
 
-  # R² セクション
+  # R2 セクション
   if (!is.null(r2) && length(r2) > 0) {
     html <- paste0(html, '
   <h2>R-squared</h2>
@@ -2106,9 +2106,11 @@ comparison_server <- function(id, rv) {
                     class = "text-muted",
                     sprintf("CFI=%.3f, RMSEA=%.3f", fm["cfi"], fm["rmsea"])
                   ),
-                  if (m$description != "") {
-                    tags$br()
-                    tags$small(class = "text-info", m$description)
+                  if (!is.null(m$description) && nzchar(m$description)) {
+                    tagList(
+                      tags$br(),
+                      tags$small(class = "text-info", m$description)
+                    )
                   }
                 ),
                 tags$button(
