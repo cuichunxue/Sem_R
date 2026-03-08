@@ -368,7 +368,7 @@ server <- function(input, output, session) {
   results_server("results", rv)
   diagram_server("diagram", rv)
   comparison_server("comparison", rv)
-  help_server("help")
+  help_server("help", rv)
 
   # --- データサイズチェック ---
   observe({

@@ -265,6 +265,294 @@ custom_css <- function() {
     background: #95a5a6;
   }
 
+  /* ========================================================
+     ステップインジケーター（初心者向けガイド）
+     ======================================================== */
+  .step-indicator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    gap: 0;
+  }
+
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #95a5a6;
+    position: relative;
+  }
+
+  .step-item.active {
+    background-color: #3498db;
+    color: white;
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+  }
+
+  .step-item.completed {
+    background-color: #18bc9c;
+    color: white;
+  }
+
+  .step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .step-item:not(.active):not(.completed) .step-number {
+    background: #ddd;
+    color: #999;
+  }
+
+  .step-connector {
+    width: 30px;
+    height: 2px;
+    background-color: #ddd;
+    flex-shrink: 0;
+  }
+
+  .step-connector.completed {
+    background-color: #18bc9c;
+  }
+
+  /* ========================================================
+     ウェルカムカード
+     ======================================================== */
+  .welcome-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .welcome-card::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 300px;
+    height: 300px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 50%;
+  }
+
+  .welcome-card h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .welcome-card p {
+    opacity: 0.9;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+  }
+
+  .demo-btn {
+    background: white;
+    color: #667eea;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  }
+
+  .demo-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    color: #667eea;
+    background: white;
+  }
+
+  /* ========================================================
+     結果解釈カード
+     ======================================================== */
+  .interpretation-card {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .interpretation-card.good {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-left: 4px solid #18bc9c;
+  }
+
+  .interpretation-card.acceptable {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+    border-left: 4px solid #f39c12;
+  }
+
+  .interpretation-card.poor {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border-left: 4px solid #e74c3c;
+  }
+
+  .interpretation-title {
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .interpretation-text {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #2c3e50;
+  }
+
+  /* ========================================================
+     次のステップボタン
+     ======================================================== */
+  .next-step-banner {
+    background: linear-gradient(135deg, #e8f4fc 0%, #d1ecf1 100%);
+    border: 2px solid #3498db;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1rem;
+  }
+
+  .next-step-banner .next-step-text {
+    font-weight: 600;
+    color: #2c3e50;
+  }
+
+  .next-step-banner .next-step-hint {
+    font-size: 0.85rem;
+    color: #6c757d;
+  }
+
+  /* ========================================================
+     ヒントツールチップ
+     ======================================================== */
+  .beginner-tip {
+    background: #e8f4fc;
+    border-left: 3px solid #3498db;
+    border-radius: 0 8px 8px 0;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    color: #2c3e50;
+  }
+
+  .beginner-tip strong {
+    color: #3498db;
+  }
+
+  /* ========================================================
+     サンプルデータカード
+     ======================================================== */
+  .sample-card {
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+  }
+
+  .sample-card:hover {
+    border-color: #3498db;
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.15);
+    transform: translateY(-2px);
+  }
+
+  .sample-card.selected {
+    border-color: #18bc9c;
+    background-color: #f0faf7;
+  }
+
+  .sample-card h6 {
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+  }
+
+  .sample-card .text-muted {
+    font-size: 0.8rem;
+  }
+
+  /* ========================================================
+     推奨バッジ
+     ======================================================== */
+  .badge-recommended {
+    background: linear-gradient(135deg, #18bc9c 0%, #1abc9c 100%);
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 600;
+  }
+
+  /* ========================================================
+     適合度ゲージ
+     ======================================================== */
+  .fit-gauge {
+    text-align: center;
+    padding: 1rem;
+  }
+
+  .fit-gauge .gauge-value {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .fit-gauge .gauge-label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 0.25rem;
+  }
+
+  .fit-gauge .gauge-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #e9ecef;
+    margin-top: 0.5rem;
+    overflow: hidden;
+  }
+
+  .fit-gauge .gauge-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .fit-gauge.good .gauge-value { color: #18bc9c; }
+  .fit-gauge.good .gauge-bar-fill { background: #18bc9c; }
+  .fit-gauge.acceptable .gauge-value { color: #f39c12; }
+  .fit-gauge.acceptable .gauge-bar-fill { background: #f39c12; }
+  .fit-gauge.poor .gauge-value { color: #e74c3c; }
+  .fit-gauge.poor .gauge-bar-fill { background: #e74c3c; }
+
   /* レスポンシブ調整 */
   @media (max-width: 768px) {
     .card-header {
@@ -273,6 +561,19 @@ custom_css <- function() {
 
     .syntax-editor {
       min-height: 200px;
+    }
+
+    .step-indicator {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .step-connector {
+      display: none;
+    }
+
+    .welcome-card {
+      padding: 1.5rem;
     }
   }
   '
@@ -779,6 +1080,92 @@ safe_read_file <- function(file, max_size_mb = 50) {
 
   # データ読み込み
   read_data_file(file)
+}
+
+#' 適合度の総合解釈を生成（初心者向け）
+#' @param fit lavaanオブジェクト
+#' @return リスト（overall_judgment, overall_class, summary_text, details）
+interpret_fit <- function(fit) {
+  if (is.null(fit)) return(NULL)
+
+  fm <- tryCatch(fitMeasures(fit), error = function(e) NULL)
+  if (is.null(fm)) return(NULL)
+
+  cfi <- fm["cfi"]
+  tli <- fm["tli"]
+  rmsea <- fm["rmsea"]
+  srmr <- fm["srmr"]
+
+  # 各指標の判定
+  scores <- c(
+    cfi = if (!is.na(cfi)) { if (cfi >= 0.95) 2 else if (cfi >= 0.90) 1 else 0 } else NA,
+    tli = if (!is.na(tli)) { if (tli >= 0.95) 2 else if (tli >= 0.90) 1 else 0 } else NA,
+    rmsea = if (!is.na(rmsea)) { if (rmsea <= 0.05) 2 else if (rmsea <= 0.08) 1 else 0 } else NA,
+    srmr = if (!is.na(srmr)) { if (srmr <= 0.05) 2 else if (srmr <= 0.08) 1 else 0 } else NA
+  )
+
+  valid_scores <- scores[!is.na(scores)]
+  if (length(valid_scores) == 0) {
+    return(list(
+      overall_judgment = "判定不能",
+      overall_class = "",
+      summary_text = "適合度指標を計算できません。",
+      details = list()
+    ))
+  }
+
+  avg_score <- mean(valid_scores)
+
+  if (avg_score >= 1.5) {
+    overall <- "good"
+    judgment <- "良好"
+    summary <- "モデルはデータに良く適合しています。分析結果は信頼できます。"
+  } else if (avg_score >= 0.75) {
+    overall <- "acceptable"
+    judgment <- "許容範囲"
+    summary <- "モデルの適合度は許容範囲内です。結果は参考にできますが、モデルの改善余地があります。"
+  } else {
+    overall <- "poor"
+    judgment <- "要改善"
+    summary <- "モデルの適合度が不十分です。修正指標を参考にモデルを改善してください。"
+  }
+
+  # 各指標の詳細解釈
+  details <- list()
+  if (!is.na(cfi)) {
+    details$cfi <- list(
+      value = sprintf("%.3f", cfi),
+      eval = evaluate_fit_index("cfi", cfi),
+      text = if (cfi >= 0.95) "CFI(比較適合度指標)は0.95以上で良好です。"
+             else if (cfi >= 0.90) "CFI(比較適合度指標)は0.90以上で許容範囲です。0.95以上を目指しましょう。"
+             else "CFI(比較適合度指標)が0.90未満です。モデルの改善が必要です。"
+    )
+  }
+  if (!is.na(rmsea)) {
+    details$rmsea <- list(
+      value = sprintf("%.3f", rmsea),
+      eval = evaluate_fit_index("rmsea", rmsea),
+      text = if (rmsea <= 0.05) "RMSEA(近似誤差平均二乗根)は0.05以下で良好です。"
+             else if (rmsea <= 0.08) "RMSEA(近似誤差平均二乗根)は0.08以下で許容範囲です。0.05以下を目指しましょう。"
+             else "RMSEA(近似誤差平均二乗根)が0.08を超えています。モデルの改善が必要です。"
+    )
+  }
+  if (!is.na(srmr)) {
+    details$srmr <- list(
+      value = sprintf("%.3f", srmr),
+      eval = evaluate_fit_index("srmr", srmr),
+      text = if (srmr <= 0.05) "SRMR(標準化残差平均二乗根)は0.05以下で良好です。"
+             else if (srmr <= 0.08) "SRMR(標準化残差平均二乗根)は0.08以下で許容範囲です。"
+             else "SRMR(標準化残差平均二乗根)が0.08を超えています。モデルの改善が必要です。"
+    )
+  }
+
+  list(
+    overall_judgment = judgment,
+    overall_class = overall,
+    summary_text = summary,
+    details = details
+  )
 }
 
 #' 結果のエクスポート用フォーマット

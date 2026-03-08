@@ -15,6 +15,112 @@ data_server <- function(id, rv) {
       rv$data[, sapply(rv$data, is.numeric), drop = FALSE]
     })
 
+    # --- ウェルカムバナー（データ未読込時のみ表示）---
+    output$welcome_banner <- renderUI({
+      if (!is.null(rv$data)) return(NULL)
+
+      tags$div(
+        class = "welcome-card",
+        tags$h2("SEM分析を始めましょう!"),
+        tags$p(
+          "構造方程式モデリング（SEM）の分析ツールへようこそ。",
+          "初めての方は、まずデモで体験してみてください。"
+        ),
+        fluidRow(
+          column(6,
+            actionButton(
+              ns("run_demo"),
+              tags$span(
+                tags$i(class = "fas fa-play me-2"),
+                "ワンクリックデモ（データ読込 → モデル設定 → 分析実行）"
+              ),
+              class = "demo-btn w-100"
+            )
+          ),
+          column(6,
+            tags$div(
+              class = "ps-3",
+              style = "color: rgba(255,255,255,0.9);",
+              tags$p(class = "mb-1", tags$i(class = "fas fa-check me-2"), "サンプルデータを自動読込"),
+              tags$p(class = "mb-1", tags$i(class = "fas fa-check me-2"), "3因子CFAモデルを自動設定"),
+              tags$p(class = "mb-0", tags$i(class = "fas fa-check me-2"), "分析を自動実行して結果を表示")
+            )
+          )
+        )
+      )
+    })
+
+    # --- ワンクリックデモ ---
+    observeEvent(input$run_demo, {
+      waiter <- Waiter$new(
+        html = tagList(
+          spin_fading_circles(),
+          tags$h4("デモを準備中...", class = "text-white mt-3"),
+          tags$p("サンプルデータ読み込み → モデル設定 → 分析実行", class = "text-white-50")
+        ),
+        color = "rgba(44, 62, 80, 0.9)"
+      )
+      waiter$show()
+
+      tryCatch({
+        # Step 1: サンプルデータ読み込み
+        rv$data <- as.data.frame(HolzingerSwineford1939)
+        rv$data_name <- "HolzingerSwineford1939"
+
+        # Step 2: モデル設定
+        rv$model_syntax <- paste(
+          "# 3因子確認的因子分析モデル（自動設定）",
+          "visual  =~ x1 + x2 + x3",
+          "textual =~ x4 + x5 + x6",
+          "speed   =~ x7 + x8 + x9",
+          sep = "\n"
+        )
+
+        # Step 3: 分析実行
+        fit <- sem(
+          model = rv$model_syntax,
+          data = rv$data,
+          estimator = "ML"
+        )
+
+        rv$fit <- fit
+        rv$fit_summary <- summary(fit, standardized = TRUE, fit.measures = TRUE)
+        rv$estimation_complete <- TRUE
+        rv$error_message <- NULL
+        rv$error_help <- NULL
+
+        waiter$hide()
+
+        showNotification(
+          tags$div(
+            tags$strong("デモ完了!"),
+            tags$br(),
+            "サンプルデータの3因子CFAを実行しました。",
+            tags$br(),
+            "「結果」タブで分析結果を確認できます。"
+          ),
+          type = "message",
+          duration = 8
+        )
+
+        # 結果タブに移動
+        rv$navigate_to <- "results_tab"
+
+      }, error = function(e) {
+        waiter$hide()
+        showNotification(
+          paste("デモエラー:", e$message),
+          type = "error",
+          duration = 10
+        )
+      })
+    })
+
+    # --- 次のステップへ（モデル定義タブへ移動）---
+    observeEvent(input$goto_model, {
+      rv$navigate_to <- "model_tab"
+    })
+
     # --- ファイルアップロード ---
     observeEvent(input$file_upload, {
       req(input$file_upload)
@@ -334,6 +440,37 @@ create_custom_sample <- function() {
 model_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # --- ステップインジケーター ---
+    output$model_step_indicator <- renderUI({
+      data_done <- !is.null(rv$data)
+      model_done <- !is.null(rv$model_syntax) && trimws(rv$model_syntax) != ""
+      analysis_done <- isTRUE(rv$estimation_complete)
+      step_indicator_ui(active_step = 2, data_done = data_done, model_done = model_done, analysis_done = analysis_done)
+    })
+
+    # --- 次のステップボタン ---
+    output$goto_estimation_btn <- renderUI({
+      if (!is.null(rv$model_syntax) && trimws(rv$model_syntax) != "") {
+        tags$div(
+          class = "next-step-banner",
+          tags$div(
+            tags$div(class = "next-step-text", "モデル設定完了!"),
+            tags$div(class = "next-step-hint", "次は分析を実行しましょう")
+          ),
+          actionButton(
+            ns("goto_estimation"),
+            tags$span(tags$i(class = "fas fa-arrow-right me-1"), "推定設定へ"),
+            class = "btn-primary btn-sm"
+          )
+        )
+      }
+    })
+
+    # --- 推定設定タブへ移動 ---
+    observeEvent(input$goto_estimation, {
+      rv$navigate_to <- "estimation_tab"
+    })
 
     # --- ローカルリアクティブ値 ---
     local_rv <- reactiveValues(
@@ -1060,6 +1197,57 @@ estimation_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # --- 推定方法の推奨 ---
+    output$estimator_recommendation <- renderUI({
+      if (is.null(rv$data)) return(NULL)
+
+      num_data <- rv$data[, sapply(rv$data, is.numeric), drop = FALSE]
+      n_missing <- sum(is.na(num_data))
+      n_obs <- nrow(rv$data)
+
+      recommendations <- character(0)
+
+      if (n_missing > 0) {
+        pct <- round(n_missing / (nrow(num_data) * ncol(num_data)) * 100, 1)
+        recommendations <- c(recommendations,
+          paste0("欠損値が", n_missing, "個(", pct, "%)あります。「欠損値処理」をFIMLにすることを推奨します。"))
+      }
+
+      if (n_obs < 200) {
+        recommendations <- c(recommendations,
+          paste0("サンプルサイズが", n_obs, "と小さめです。結果の解釈に注意してください。"))
+      }
+
+      # 正規性の簡易チェック（各変数の歪度・尖度）
+      if (ncol(num_data) > 0) {
+        skew_issues <- sapply(num_data, function(x) {
+          x <- na.omit(x)
+          if (length(x) < 3) return(FALSE)
+          n <- length(x)
+          m <- mean(x)
+          s <- sd(x)
+          if (s == 0) return(FALSE)
+          abs(sum((x - m)^3) / (n * s^3)) > 2
+        })
+        if (any(skew_issues)) {
+          recommendations <- c(recommendations,
+            "一部の変数に強い歪みがあります。MLR（ロバスト最尤法）の使用を検討してください。")
+        }
+      }
+
+      if (length(recommendations) > 0) {
+        tags$div(
+          class = "alert alert-info py-2 small",
+          tags$i(class = "fas fa-info-circle me-1"),
+          tags$strong("データに基づく推奨: "),
+          tags$ul(
+            class = "mb-0 mt-1",
+            lapply(recommendations, function(r) tags$li(r))
+          )
+        )
+      }
+    })
+
     # --- 分析実行 ---
     observeEvent(input$run_analysis, {
       # バリデーション
@@ -1365,6 +1553,52 @@ results_server <- function(id, rv) {
     cached_params <- reactive({
       req(rv$fit)
       parameterEstimates(rv$fit, standardized = TRUE)
+    })
+
+    # --- 総合解釈（初心者向け）---
+    output$overall_interpretation <- renderUI({
+      req(rv$fit)
+
+      interp <- interpret_fit(rv$fit)
+      if (is.null(interp)) return(NULL)
+
+      # アイコンと色の設定
+      icon_class <- switch(interp$overall_class,
+        "good" = "fas fa-check-circle fa-2x text-success",
+        "acceptable" = "fas fa-exclamation-circle fa-2x text-warning",
+        "poor" = "fas fa-times-circle fa-2x text-danger",
+        "fas fa-question-circle fa-2x text-muted"
+      )
+
+      tags$div(
+        class = paste("interpretation-card", interp$overall_class),
+        fluidRow(
+          column(1,
+            tags$div(class = "pt-1", tags$i(class = icon_class))
+          ),
+          column(11,
+            tags$div(class = "interpretation-title",
+              paste("総合判定:", interp$overall_judgment)
+            ),
+            tags$div(class = "interpretation-text", interp$summary_text),
+            if (length(interp$details) > 0) {
+              tags$div(
+                class = "mt-2",
+                lapply(interp$details, function(d) {
+                  tags$div(
+                    class = "small",
+                    tags$span(
+                      class = paste("badge me-1", gsub("fit-", "bg-", d$eval$class)),
+                      d$eval$judgment
+                    ),
+                    d$text
+                  )
+                })
+              )
+            }
+          )
+        )
+      )
     })
 
     # --- 適合度サマリーカード ---
@@ -2470,8 +2704,59 @@ comparison_server <- function(id, rv) {
 # -----------------------------------------------------------------------------
 # ヘルプモジュール サーバー
 # -----------------------------------------------------------------------------
-help_server <- function(id) {
+help_server <- function(id, rv = NULL) {
   moduleServer(id, function(input, output, session) {
-    # ヘルプタブは静的コンテンツのみ
+    # --- ヘルプタブからのデモ起動 ---
+    observeEvent(input$start_demo, {
+      if (is.null(rv)) return()
+
+      waiter <- Waiter$new(
+        html = tagList(
+          spin_fading_circles(),
+          tags$h4("デモを準備中...", class = "text-white mt-3")
+        ),
+        color = "rgba(44, 62, 80, 0.9)"
+      )
+      waiter$show()
+
+      tryCatch({
+        rv$data <- as.data.frame(HolzingerSwineford1939)
+        rv$data_name <- "HolzingerSwineford1939"
+
+        rv$model_syntax <- paste(
+          "# 3因子確認的因子分析モデル（デモ）",
+          "visual  =~ x1 + x2 + x3",
+          "textual =~ x4 + x5 + x6",
+          "speed   =~ x7 + x8 + x9",
+          sep = "\n"
+        )
+
+        fit <- sem(
+          model = rv$model_syntax,
+          data = rv$data,
+          estimator = "ML"
+        )
+
+        rv$fit <- fit
+        rv$fit_summary <- summary(fit, standardized = TRUE, fit.measures = TRUE)
+        rv$estimation_complete <- TRUE
+        rv$error_message <- NULL
+        rv$error_help <- NULL
+
+        waiter$hide()
+
+        showNotification(
+          "デモ完了! 「結果」タブで分析結果を確認できます。",
+          type = "message",
+          duration = 8
+        )
+
+        rv$navigate_to <- "results_tab"
+
+      }, error = function(e) {
+        waiter$hide()
+        showNotification(paste("デモエラー:", e$message), type = "error")
+      })
+    })
   })
 }

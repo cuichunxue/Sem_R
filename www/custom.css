@@ -331,3 +331,75 @@ kbd {
   font-size: 0.8em;
   font-family: inherit;
 }
+
+/* =============================================================================
+   初心者向け追加スタイル
+   ============================================================================= */
+
+/* 詳細オプション折りたたみ */
+details summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+
+details summary::-webkit-details-marker {
+  display: none;
+}
+
+details summary::before {
+  content: "\f054";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 0.7rem;
+  margin-right: 0.5rem;
+  transition: transform 0.2s;
+}
+
+details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+details[open] > div {
+  animation: fadeIn 0.3s ease;
+}
+
+/* ウェルカムカードのボタン効果 */
+.welcome-card .btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+
+/* 解釈カードのアニメーション */
+.interpretation-card {
+  animation: fadeIn 0.5s ease;
+}
+
+/* 次のステップバナーのホバー */
+.next-step-banner:hover {
+  box-shadow: 0 2px 12px rgba(52, 152, 219, 0.2);
+}
+
+/* ステップインジケーターのアニメーション */
+.step-item.active {
+  animation: fadeIn 0.3s ease;
+}
+
+/* サイドバーの次のステップボタン */
+.next-step-banner .btn {
+  white-space: nowrap;
+}
+
+/* 推奨バッジの補助 */
+.badge-recommended {
+  vertical-align: middle;
+}
+
+/* ビギナーヒントのスタイル微調整 */
+.beginner-tip {
+  animation: fadeIn 0.5s ease;
+}
+
+.beginner-tip .fas {
+  color: #3498db;
+}
