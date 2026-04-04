@@ -218,11 +218,11 @@ data_server <- function(id, rv) {
         ),
         tags$p(
           tags$i(class = "fas fa-columns me-2"),
-          tags$strong("列数: "), ncol(rv$data)
+          tags$strong("列数: "), as.character(ncol(rv$data))
         ),
         tags$p(
           tags$i(class = "fas fa-hashtag me-2"),
-          tags$strong("数値変数: "), n_numeric
+          tags$strong("数値変数: "), as.character(n_numeric)
         ),
         if (n_missing > 0) {
           tags$p(
@@ -658,7 +658,7 @@ model_server <- function(id, rv) {
                   tags$div(
                     class = "pt-2 text-center",
                     tags$span(class = paste("badge", badge_class),
-                      n_indicators, "個選択"
+                      paste0(n_indicators, "個選択")
                     )
                   )
                 ),
@@ -934,17 +934,17 @@ model_server <- function(id, rv) {
             tags$tr(
               tags$td(tags$i(class = "fas fa-layer-group me-2 text-info")),
               tags$td("因子数"),
-              tags$td(n_factors)
+              tags$td(as.character(n_factors))
             ),
             tags$tr(
               tags$td(tags$i(class = "fas fa-th-list me-2 text-success")),
               tags$td("指標変数"),
-              tags$td(n_indicators)
+              tags$td(as.character(n_indicators))
             ),
             tags$tr(
               tags$td(tags$i(class = "fas fa-arrow-right me-2 text-warning")),
               tags$td("回帰パス"),
-              tags$td(n_structural)
+              tags$td(as.character(n_structural))
             ),
             tags$tr(
               tags$td(tags$i(class = "fas fa-calculator me-2 text-secondary")),
@@ -1489,7 +1489,7 @@ estimation_server <- function(id, rv) {
           if (se_val == "bootstrap") {
             tags$tr(
               tags$td(tags$strong("ブートストラップ回数")),
-              tags$td(if (is.null(input$bootstrap_n)) 1000 else input$bootstrap_n)
+              tags$td(as.character(if (is.null(input$bootstrap_n)) 1000 else input$bootstrap_n))
             )
           },
           tags$tr(
