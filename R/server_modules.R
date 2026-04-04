@@ -476,7 +476,8 @@ model_server <- function(id, rv) {
     local_rv <- reactiveValues(
       factors = list(),
       factor_counter = 0,
-      generated_syntax = ""
+      generated_syntax = "",
+      used_vars_map = list()  # 因子ごとの使用変数マップ
     )
 
     # =========================================================================
@@ -630,14 +631,43 @@ model_server <- function(id, rv) {
         ))
       }
 
+      # 他の因子で使用済みの変数マップを構築
+      used_by_other <- list()
+      for (fid2 in names(factors)) {
+        f2 <- factors[[fid2]]
+        for (v in f2$indicators) {
+          if (is.null(used_by_other[[v]])) used_by_other[[v]] <- character(0)
+          used_by_other[[v]] <- c(used_by_other[[v]], f2$name)
+        }
+      }
+
       tagList(
         lapply(names(factors), function(fid) {
           f <- factors[[fid]]
           n_indicators <- length(f$indicators)
 
-          # 指標数に応じた色を設定
+          # 指標数に応じた色とメッセージを設定
           border_color <- if (n_indicators == 0) "#e74c3c" else if (n_indicators < 3) "#f39c12" else "#18bc9c"
           badge_class <- if (n_indicators == 0) "bg-danger" else if (n_indicators < 3) "bg-warning" else "bg-success"
+          status_msg <- if (n_indicators == 0) {
+            "指標を選んでください"
+          } else if (n_indicators < 3) {
+            paste0(n_indicators, "個 (あと", 3 - n_indicators, "個推奨)")
+          } else {
+            paste0(n_indicators, "個 OK")
+          }
+
+          # 他の因子で使用中の変数をマーク
+          other_used <- character(0)
+          for (v in vars) {
+            owners <- used_by_other[[v]]
+            if (!is.null(owners)) {
+              owners_excl <- setdiff(owners, f$name)
+              if (length(owners_excl) > 0) {
+                other_used <- c(other_used, v)
+              }
+            }
+          }
 
           tags$div(
             class = "card mb-3 factor-card",
@@ -646,26 +676,24 @@ model_server <- function(id, rv) {
               class = "card-body py-2 px-3",
               # 因子名入力とバッジ
               fluidRow(
-                column(6,
+                column(5,
                   textInput(
                     ns(paste0("factor_name_", fid)),
                     NULL,
                     value = f$name,
-                    placeholder = "因子名を入力"
+                    placeholder = "因子名（英数字）"
                   )
                 ),
-                column(3,
+                column(4,
                   tags$div(
                     class = "pt-2 text-center",
-                    tags$span(class = paste("badge", badge_class),
-                      paste0(n_indicators, "個選択")
-                    )
+                    tags$span(class = paste("badge", badge_class), status_msg)
                   )
                 ),
                 column(3,
                   actionButton(
                     ns(paste0("delete_factor_", fid)),
-                    tags$i(class = "fas fa-trash"),
+                    tags$span(tags$i(class = "fas fa-trash-alt me-1"), "削除"),
                     class = "btn-sm btn-outline-danger w-100 mt-1",
                     onclick = sprintf(
                       "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
@@ -674,15 +702,31 @@ model_server <- function(id, rv) {
                   )
                 )
               ),
+              # 使用中変数の注意表示
+              if (length(other_used) > 0) {
+                tags$div(
+                  class = "small text-info mb-1",
+                  tags$i(class = "fas fa-info-circle me-1"),
+                  paste0("薄色の変数は他の因子で使用中: ", paste(other_used, collapse = ", "))
+                )
+              },
               # 指標変数選択
-              tags$label(class = "small text-muted", "指標変数を選択（クリックで追加/削除）:"),
+              tags$label(class = "small text-muted", "指標変数を選択:"),
               checkboxGroupInput(
                 ns(paste0("indicators_", fid)),
                 label = NULL,
                 choices = vars,
                 selected = f$indicators,
                 inline = TRUE
-              )
+              ),
+              # 選択済みの変数をテキストで表示（見やすさ向上）
+              if (n_indicators > 0) {
+                tags$div(
+                  class = "small text-success mt-1",
+                  tags$i(class = "fas fa-check me-1"),
+                  paste0(f$name, " =~ ", paste(f$indicators, collapse = " + "))
+                )
+              }
             )
           )
         })
@@ -697,14 +741,21 @@ model_server <- function(id, rv) {
       }
     })
 
-    # --- 因子名の同期 ---
+    # --- 因子名の同期（バリデーション付き） ---
     observe({
       factors <- isolate(local_rv$factors)
       for (fid in names(factors)) {
-        # 因子名の同期
+        # 因子名の同期（空白・特殊文字を自動修正）
         name_input <- input[[paste0("factor_name_", fid)]]
         if (!is.null(name_input) && name_input != "" && name_input != factors[[fid]]$name) {
-          local_rv$factors[[fid]]$name <- name_input
+          # 因子名のサニタイズ: スペースをアンダースコアに、特殊文字を除去
+          sanitized <- gsub("\\s+", "_", trimws(name_input))
+          sanitized <- gsub("[^a-zA-Z0-9_.]", "", sanitized)
+          # 先頭が数字の場合はFを追加
+          if (grepl("^[0-9]", sanitized)) sanitized <- paste0("F", sanitized)
+          if (nzchar(sanitized)) {
+            local_rv$factors[[fid]]$name <- sanitized
+          }
         }
 
         # 指標変数の同期（NULLの場合は既存値を保持）
@@ -735,7 +786,11 @@ model_server <- function(id, rv) {
       factors <- local_rv$factors
 
       if (length(factors) < 2) {
-        return(tags$p(class = "text-muted small", "2つ以上の因子を定義すると、回帰パスを設定できます"))
+        return(tags$div(
+          class = "text-muted small text-center py-2",
+          tags$i(class = "fas fa-info-circle me-1"),
+          "2つ以上の因子を定義すると、回帰パスを設定できます"
+        ))
       }
 
       factor_names <- sapply(factors, function(f) f$name)
@@ -744,17 +799,24 @@ model_server <- function(id, rv) {
       pairs <- expand.grid(from = factor_names, to = factor_names, stringsAsFactors = FALSE)
       pairs <- pairs[pairs$from != pairs$to, ]
 
-      # チェックボックスの選択肢を作成
+      # 分かりやすいラベル: "原因 → 結果" 形式
       choices <- setNames(
         paste0(pairs$to, " ~ ", pairs$from),
-        paste0(pairs$to, " ← ", pairs$from)
+        paste0(pairs$from, " \u2192 ", pairs$to, "  (", pairs$from, "が", pairs$to, "に影響)")
       )
 
-      checkboxGroupInput(
-        ns("structural_paths_selected"),
-        label = NULL,
-        choices = choices,
-        selected = character(0)
+      tagList(
+        tags$div(
+          class = "small text-muted mb-2",
+          tags$i(class = "fas fa-question-circle me-1"),
+          "「A \u2192 B」= AがBに影響する（AからBへの因果パス）"
+        ),
+        checkboxGroupInput(
+          ns("structural_paths_selected"),
+          label = NULL,
+          choices = choices,
+          selected = character(0)
+        )
       )
     })
 
@@ -763,7 +825,11 @@ model_server <- function(id, rv) {
       factors <- local_rv$factors
 
       if (length(factors) < 2) {
-        return(tags$p(class = "text-muted small", "2つ以上の因子を定義すると、共分散を設定できます"))
+        return(tags$div(
+          class = "text-muted small text-center py-2",
+          tags$i(class = "fas fa-info-circle me-1"),
+          "2つ以上の因子を定義すると、共分散を設定できます"
+        ))
       }
 
       factor_names <- sapply(factors, function(f) f$name)
@@ -771,14 +837,19 @@ model_server <- function(id, rv) {
       # 共分散は対称なので、半分の組み合わせ
       pairs <- combn(factor_names, 2, simplify = FALSE)
 
-      # チェックボックスの選択肢を作成
       choices <- setNames(
         sapply(pairs, function(p) paste0(p[1], " ~~ 0*", p[2])),
-        sapply(pairs, function(p) paste0(p[1], " ↔ ", p[2], " を0に固定"))
+        sapply(pairs, function(p) paste0(p[1], " \u2194 ", p[2], " の共分散を0に固定"))
       )
 
       tags$div(
-        tags$p(class = "small text-muted", "※ 因子間の共分散はデフォルトで推定されます。チェックすると0に固定します。"),
+        tags$div(
+          class = "alert alert-light py-2 small",
+          tags$i(class = "fas fa-info-circle text-info me-1"),
+          tags$strong("通常はここを変更する必要はありません。"),
+          "CFA/SEMでは因子間の共分散はデフォルトで自動推定されます。",
+          "特定の因子間に相関がないと仮定する場合のみチェックしてください。"
+        ),
         checkboxGroupInput(
           ns("covariance_paths_selected"),
           label = NULL,
@@ -788,14 +859,11 @@ model_server <- function(id, rv) {
       )
     })
 
-    # --- 構文生成 ---
-    observeEvent(input$generate_syntax, {
+    # --- 構文の自動生成（リアクティブ） ---
+    # 因子/構造パス/共分散/オプションの変更を自動検知して構文を生成
+    auto_generated_syntax <- reactive({
       factors <- local_rv$factors
-
-      if (length(factors) == 0) {
-        showNotification("因子を1つ以上定義してください", type = "error")
-        return()
-      }
+      if (length(factors) == 0) return("")
 
       # 測定モデル生成
       measurement_lines <- character(0)
@@ -804,7 +872,6 @@ model_server <- function(id, rv) {
       for (f in factors) {
         if (length(f$indicators) > 0) {
           if (equal_loadings && length(f$indicators) > 1) {
-            # 等値制約: 全ての負荷量に同じラベルをつける
             label <- paste0("l_", gsub("[^a-zA-Z0-9]", "", f$name))
             labeled_indicators <- paste0(label, "*", f$indicators)
             line <- paste0(f$name, " =~ ", paste(labeled_indicators, collapse = " + "))
@@ -815,21 +882,17 @@ model_server <- function(id, rv) {
         }
       }
 
-      if (length(measurement_lines) == 0) {
-        showNotification("各因子に少なくとも1つの指標変数を選択してください", type = "error")
-        return()
-      }
+      if (length(measurement_lines) == 0) return("")
 
-      # 構造モデル（回帰）生成 - checkboxGroupInputから取得
+      # 構造モデル（回帰）
       structural_lines <- input$structural_paths_selected
       if (is.null(structural_lines)) structural_lines <- character(0)
 
-      # 間接効果計算用にラベル付きの構造パスを生成
+      # 間接効果
       labeled_structural_lines <- character(0)
       indirect_effect_lines <- character(0)
 
       if (isTRUE(input$add_indirect_effect) && length(structural_lines) >= 2) {
-        # パスにラベルを付与
         path_labels <- list()
         for (i in seq_along(structural_lines)) {
           path <- structural_lines[i]
@@ -838,9 +901,7 @@ model_server <- function(id, rv) {
           path_labels[[path]] <- label
         }
 
-        # 3因子媒介モデル（X→M→Y）の場合、間接効果を計算
         if (length(factors) == 3 && length(structural_lines) >= 2) {
-          # a*b形式の間接効果を追加
           if (length(path_labels) >= 2) {
             labels <- unlist(path_labels)
             indirect_effect_lines <- c(indirect_effect_lines,
@@ -851,40 +912,49 @@ model_server <- function(id, rv) {
             }
           }
         }
-
         structural_lines <- labeled_structural_lines
       }
 
-      # 共分散制約（0に固定）生成 - checkboxGroupInputから取得
+      # 共分散制約
       covariance_lines <- input$covariance_paths_selected
       if (is.null(covariance_lines)) covariance_lines <- character(0)
 
-      # 構文を組み立て
-      syntax_parts <- character(0)
-
-      syntax_parts <- c(syntax_parts, "# 測定モデル")
-      syntax_parts <- c(syntax_parts, measurement_lines)
+      # 組み立て
+      syntax_parts <- c("# 測定モデル", measurement_lines)
 
       if (length(structural_lines) > 0) {
-        syntax_parts <- c(syntax_parts, "", "# 構造モデル")
-        syntax_parts <- c(syntax_parts, structural_lines)
+        syntax_parts <- c(syntax_parts, "", "# 構造モデル", structural_lines)
       }
-
       if (length(covariance_lines) > 0) {
-        syntax_parts <- c(syntax_parts, "", "# 共分散制約")
-        syntax_parts <- c(syntax_parts, covariance_lines)
+        syntax_parts <- c(syntax_parts, "", "# 共分散制約", covariance_lines)
       }
-
       if (length(indirect_effect_lines) > 0) {
-        syntax_parts <- c(syntax_parts, "", "# 間接効果・総合効果")
-        syntax_parts <- c(syntax_parts, indirect_effect_lines)
+        syntax_parts <- c(syntax_parts, "", "# 間接効果・総合効果", indirect_effect_lines)
       }
 
-      generated <- paste(syntax_parts, collapse = "\n")
-      local_rv$generated_syntax <- generated
-      rv$model_syntax <- generated
+      paste(syntax_parts, collapse = "\n")
+    })
 
-      showNotification("構文を生成しました！", type = "message")
+    # 自動生成された構文をリアルタイムで反映
+    observe({
+      syntax <- auto_generated_syntax()
+      local_rv$generated_syntax <- syntax
+      # 構文があれば自動的にモデル構文として適用
+      if (nzchar(syntax)) {
+        rv$model_syntax <- syntax
+      }
+    })
+
+    # 「構文を生成」ボタンは明示的な生成+通知用に残す
+    observeEvent(input$generate_syntax, {
+      syntax <- auto_generated_syntax()
+      if (nzchar(syntax)) {
+        local_rv$generated_syntax <- syntax
+        rv$model_syntax <- syntax
+        showNotification("構文を生成・適用しました！", type = "message")
+      } else {
+        showNotification("因子に指標変数を選択してください", type = "error")
+      }
     })
 
     # --- モデルサマリー表示 ---
@@ -963,62 +1033,100 @@ model_server <- function(id, rv) {
       )
     })
 
-    # --- 因子バリデーション表示 ---
+    # --- 因子バリデーション表示（リアルタイム） ---
     output$factor_validation <- renderUI({
       factors <- local_rv$factors
 
       if (length(factors) == 0) return(NULL)
 
+      errors <- character(0)
       warnings <- character(0)
+      successes <- character(0)
+
+      # 因子名の重複チェック
+      factor_names <- sapply(factors, function(f) f$name)
+      dup_names <- factor_names[duplicated(factor_names)]
+      if (length(dup_names) > 0) {
+        errors <- c(errors, paste0("因子名「", unique(dup_names), "」が重複しています（名前を変更してください）"))
+      }
+
+      # 変数の重複使用チェック
+      all_indicators <- unlist(lapply(factors, function(f) f$indicators))
+      dup_indicators <- unique(all_indicators[duplicated(all_indicators)])
+      if (length(dup_indicators) > 0) {
+        warnings <- c(warnings, paste0("変数「", paste(dup_indicators, collapse = ", "), "」が複数の因子で使用されています（交差負荷）"))
+      }
 
       for (f in factors) {
         n_indicators <- length(f$indicators)
         if (n_indicators == 0) {
-          warnings <- c(warnings, paste0("「", f$name, "」に指標変数が選択されていません"))
+          errors <- c(errors, paste0("「", f$name, "」に指標変数が選択されていません"))
         } else if (n_indicators < 3) {
           warnings <- c(warnings, paste0("「", f$name, "」の指標変数が", n_indicators, "個です（推奨: 3個以上）"))
+        } else {
+          successes <- c(successes, paste0("「", f$name, "」 ", n_indicators, "個の指標 OK"))
         }
       }
 
-      if (length(warnings) > 0) {
-        tags$div(
-          class = "alert alert-warning mt-3 py-2",
-          tags$i(class = "fas fa-exclamation-triangle me-2"),
-          tags$strong("確認事項:"),
-          tags$ul(
-            class = "mb-0 mt-1",
-            lapply(warnings, function(w) tags$li(w))
+      # 全て問題なしの場合
+      if (length(errors) == 0 && length(warnings) == 0) {
+        return(tags$div(
+          class = "alert alert-success mt-3 py-2",
+          tags$i(class = "fas fa-check-circle me-2"),
+          tags$strong("モデル定義OK!"),
+          " 構文が自動生成されています。「推定設定」へ進んでください。"
+        ))
+      }
+
+      tagList(
+        if (length(errors) > 0) {
+          tags$div(
+            class = "alert alert-danger mt-3 py-2",
+            tags$i(class = "fas fa-times-circle me-2"),
+            tags$strong("修正が必要:"),
+            tags$ul(class = "mb-0 mt-1", lapply(errors, function(e) tags$li(e)))
           )
-        )
-      }
+        },
+        if (length(warnings) > 0) {
+          tags$div(
+            class = "alert alert-warning mt-2 py-2",
+            tags$i(class = "fas fa-exclamation-triangle me-2"),
+            tags$strong("確認事項:"),
+            tags$ul(class = "mb-0 mt-1", lapply(warnings, function(w) tags$li(w)))
+          )
+        }
+      )
     })
 
-    # --- 生成プレビュー ---
+    # --- 生成プレビュー（自動更新） ---
     output$generated_preview <- renderText({
-      if (local_rv$generated_syntax == "") {
-        return("（ここに生成された構文が表示されます）")
+      syntax <- auto_generated_syntax()
+      if (!nzchar(syntax)) {
+        return("因子に指標変数を選択すると、ここに構文が自動生成されます")
       }
-      local_rv$generated_syntax
+      syntax
     })
 
-    # --- 構文をコピー（クリップボードにコピーするためのJSを発火） ---
+    # --- 構文をコピー ---
     observeEvent(input$copy_syntax, {
-      if (local_rv$generated_syntax != "") {
-        # JavaScript経由でクリップボードにコピー
+      if (nzchar(local_rv$generated_syntax)) {
         session$sendCustomMessage("copyToClipboard", local_rv$generated_syntax)
         showNotification("構文をクリップボードにコピーしました", type = "message")
       } else {
-        showNotification("コピーする構文がありません。まず「構文を生成」をクリックしてください。", type = "warning")
+        showNotification("コピーする構文がありません", type = "warning")
       }
     })
 
-    # --- 生成した構文を適用 ---
+    # --- 生成した構文を適用（手動確認用） ---
     observeEvent(input$apply_generated, {
-      if (local_rv$generated_syntax != "") {
+      if (nzchar(local_rv$generated_syntax)) {
         rv$model_syntax <- local_rv$generated_syntax
-        showNotification("構文を適用しました。「推定設定」タブで分析を実行できます。", type = "message")
+        showNotification(
+          "構文を確認・適用しました！「推定設定」タブで分析を実行できます。",
+          type = "message"
+        )
       } else {
-        showNotification("適用する構文がありません。まず「構文を生成」をクリックしてください。", type = "warning")
+        showNotification("因子に指標変数を選択してください。構文が自動生成されます。", type = "warning")
       }
     })
 

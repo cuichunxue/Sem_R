@@ -209,7 +209,9 @@ model_ui <- function(id) {
       class = "beginner-tip",
       tags$i(class = "fas fa-lightbulb me-2"),
       tags$strong("ヒント: "),
-      "初めての方は「GUIビルダー」タブで、マウス操作だけでモデルを作れます。「クイックスタート」ボタンで簡単に始められます。"
+      "「GUIビルダー」で因子を作成し、変数をクリックするだけ！構文は",
+      tags$strong("自動生成・自動適用"),
+      "されるので、そのまま「推定設定」へ進めます。"
     ),
 
     # 入力方法の選択
@@ -368,12 +370,20 @@ model_ui <- function(id) {
                 )
               ),
 
-              # 生成ボタン（目立つデザイン）
-              actionButton(
-                ns("generate_syntax"),
-                tags$span(tags$i(class = "fas fa-magic me-2"), "構文を生成"),
-                class = "btn-primary btn-lg w-100 mt-3",
-                style = "font-size: 1.1rem;"
+              # 自動生成通知 + 手動生成ボタン
+              tags$div(
+                class = "mt-3",
+                tags$div(
+                  class = "small text-success text-center mb-2",
+                  tags$i(class = "fas fa-sync-alt me-1"),
+                  "構文は変更に応じて自動生成・適用されます"
+                ),
+                actionButton(
+                  ns("generate_syntax"),
+                  tags$span(tags$i(class = "fas fa-magic me-2"), "構文を確認・適用"),
+                  class = "btn-primary btn-lg w-100",
+                  style = "font-size: 1.1rem;"
+                )
               )
             )
           ),
@@ -402,16 +412,22 @@ model_ui <- function(id) {
                 card_body(
                   verbatimTextOutput(ns("generated_preview")),
                   tags$div(
-                    class = "mt-2 d-flex justify-content-end",
-                    actionButton(
-                      ns("copy_syntax"),
-                      tags$span(tags$i(class = "fas fa-copy me-1"), "コピー"),
-                      class = "btn-sm btn-outline-secondary me-2"
+                    class = "mt-2 d-flex justify-content-between align-items-center",
+                    tags$span(class = "small text-muted",
+                      tags$i(class = "fas fa-check-circle text-success me-1"),
+                      "自動適用済み"
                     ),
-                    actionButton(
-                      ns("apply_generated"),
-                      tags$span(tags$i(class = "fas fa-check me-1"), "この構文を使用"),
-                      class = "btn-sm btn-success"
+                    tags$div(
+                      actionButton(
+                        ns("copy_syntax"),
+                        tags$span(tags$i(class = "fas fa-copy me-1"), "コピー"),
+                        class = "btn-sm btn-outline-secondary me-2"
+                      ),
+                      actionButton(
+                        ns("apply_generated"),
+                        tags$span(tags$i(class = "fas fa-check me-1"), "確認・適用"),
+                        class = "btn-sm btn-success"
+                      )
                     )
                   )
                 )
@@ -543,7 +559,8 @@ model_ui <- function(id) {
         fluidRow(
           column(6,
             tags$p(class = "text-muted small mt-2",
-              "この構文が「推定設定」タブで使用されます。")
+              tags$i(class = "fas fa-info-circle me-1"),
+              "GUIビルダーで変数を選択すると自動反映されます。この構文で「推定設定」タブの分析が実行されます。")
           ),
           column(6,
             # 次のステップボタン
