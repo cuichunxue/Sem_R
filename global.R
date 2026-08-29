@@ -4,9 +4,8 @@
 
 # オプション設定
 options(
-  shiny.maxRequestSize = 50 * 1024^2,  # 最大アップロードサイズ: 50MB（app.Rと統一）
-  scipen = 999,                         # 科学的記数法を避ける
-  digits = 4                            # 表示桁数
+  scipen = 999,
+  digits = 4
 )
 
 # ロケール設定（日本語対応、失敗しても続行）

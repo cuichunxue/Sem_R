@@ -7,7 +7,7 @@
 # --- 設定 ---
 options(
   shiny.maxRequestSize = 50 * 1024^2,  # 最大50MBのファイルアップロード
-  shiny.sanitize.errors = FALSE,        # デバッグ中: FALSE / 本番: TRUE に変更
+  shiny.sanitize.errors = TRUE,
   warn = 1                               # 警告を即座に表示
 )
 # digits と scipen は global.R で設定済み
@@ -35,9 +35,9 @@ suppressPackageStartupMessages({
 })
 
 # --- ソースファイル読み込み ---
-source("R/utils.R")
-source("R/ui_modules.R")
-source("R/server_modules.R")
+source("R/utils.R", encoding = "UTF-8")
+source("R/ui_modules.R", encoding = "UTF-8")
+source("R/server_modules.R", encoding = "UTF-8")
 
 # --- アプリケーション設定 ---
 APP_CONFIG <- list(
@@ -325,7 +325,7 @@ server <- function(input, output, session) {
     }
   }
 
-  log_event("Session started", session$token)
+  log_event("Session started")
 
   # --- リアクティブ値 ---
   rv <- reactiveValues(

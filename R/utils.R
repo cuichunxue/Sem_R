@@ -683,7 +683,7 @@ create_fit_table <- function(fit) {
   )
 
   # 判定を追加
-  judgments <- sapply(c("chisq", "df", "pvalue", "cfi", "tli", "rmsea", "rmsea", "srmr", "aic", "bic"), function(idx) {
+  judgments <- sapply(c("chisq", "df", "pvalue", "cfi", "tli", "rmsea", "rmsea.ci", "srmr", "aic", "bic"), function(idx) {
     val <- fm[idx]
     eval_result <- evaluate_fit_index(idx, val)
     eval_result$judgment
@@ -1139,6 +1139,15 @@ interpret_fit <- function(fit) {
       text = if (cfi >= 0.95) "CFI(比較適合度指標)は0.95以上で良好です。"
              else if (cfi >= 0.90) "CFI(比較適合度指標)は0.90以上で許容範囲です。0.95以上を目指しましょう。"
              else "CFI(比較適合度指標)が0.90未満です。モデルの改善が必要です。"
+    )
+  }
+  if (!is.na(tli)) {
+    details$tli <- list(
+      value = sprintf("%.3f", tli),
+      eval = evaluate_fit_index("tli", tli),
+      text = if (tli >= 0.95) "TLI(Tucker-Lewis指標)は0.95以上で良好です。"
+             else if (tli >= 0.90) "TLI(Tucker-Lewis指標)は0.90以上で許容範囲です。0.95以上を目指しましょう。"
+             else "TLI(Tucker-Lewis指標)が0.90未満です。モデルの改善が必要です。"
     )
   }
   if (!is.na(rmsea)) {
