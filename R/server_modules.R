@@ -1213,7 +1213,7 @@ model_server <- function(id, rv) {
             class = "badge bg-secondary",
             style = "cursor: pointer; font-size: 0.85rem;",
             onclick = sprintf(
-              "var ta = document.getElementById('%s'); var pos = ta.selectionStart; var val = ta.value; ta.value = val.substring(0, pos) + '%s' + val.substring(pos); ta.focus();",
+              "var ta = document.getElementById('%s'); var pos = ta.selectionStart; var val = ta.value; ta.value = val.substring(0, pos) + '%s' + val.substring(pos); ta.focus(); $(ta).trigger('change');",
               ns("template_syntax"), v
             ),
             v
