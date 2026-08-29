@@ -41,7 +41,8 @@ custom_css <- function() {
   }
 
   /* コードエディタ */
-  .syntax-editor {
+  .syntax-editor,
+  .syntax-editor-wrapper textarea {
     font-family: "Source Code Pro", monospace;
     font-size: 13px;
     line-height: 1.5;
@@ -559,7 +560,8 @@ custom_css <- function() {
       font-size: 0.9rem;
     }
 
-    .syntax-editor {
+    .syntax-editor,
+    .syntax-editor-wrapper textarea {
       min-height: 200px;
     }
 

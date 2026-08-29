@@ -469,12 +469,15 @@ model_ui <- function(id) {
               ),
               uiOutput(ns("variable_chips")),
               hr(),
-              textAreaInput(
-                ns("template_syntax"),
-                label = NULL,
-                value = "",
-                rows = 12,
-                placeholder = "左のテンプレートを選択するか、直接入力してください"
+              tags$div(
+                class = "syntax-editor-wrapper",
+                textAreaInput(
+                  ns("template_syntax"),
+                  label = NULL,
+                  value = "",
+                  rows = 12,
+                  placeholder = "左のテンプレートを選択するか、直接入力してください"
+                )
               ),
               actionButton(
                 ns("apply_template"),
@@ -493,12 +496,15 @@ model_ui <- function(id) {
         card_body(
           fluidRow(
             column(8,
-              textAreaInput(
-                ns("model_syntax"),
-                label = NULL,
-                value = "",
-                rows = 18,
-                placeholder = "# lavaan モデル構文を直接入力\n\n# 確認的因子分析の例:\n# Factor1 =~ x1 + x2 + x3\n# Factor2 =~ x4 + x5 + x6\n\n# 回帰の例:\n# y ~ x1 + x2\n\n# 共分散の例:\n# x1 ~~ x2"
+              tags$div(
+                class = "syntax-editor-wrapper",
+                textAreaInput(
+                  ns("model_syntax"),
+                  label = NULL,
+                  value = "",
+                  rows = 18,
+                  placeholder = "# lavaan モデル構文を直接入力\n\n# 確認的因子分析の例:\n# Factor1 =~ x1 + x2 + x3\n# Factor2 =~ x4 + x5 + x6\n\n# 回帰の例:\n# y ~ x1 + x2\n\n# 共分散の例:\n# x1 ~~ x2"
+                )
               ),
               fluidRow(
                 column(6,
