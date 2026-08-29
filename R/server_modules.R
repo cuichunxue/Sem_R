@@ -138,6 +138,14 @@ data_server <- function(id, rv) {
         rv$data <- read_data_file(input$file_upload)
         rv$data_name <- input$file_upload$name
 
+        # 前回の分析結果をクリア
+        rv$fit <- NULL
+        rv$fit_summary <- NULL
+        rv$estimation_complete <- FALSE
+        rv$error_message <- NULL
+        rv$error_help <- NULL
+        rv$model_syntax <- NULL
+
         waiter$hide()
 
         showNotification(
@@ -177,6 +185,14 @@ data_server <- function(id, rv) {
             "pd" = "PoliticalDemocracy",
             "custom" = "カスタムサンプルデータ"
           )
+
+          # 前回の分析結果をクリア
+          rv$fit <- NULL
+          rv$fit_summary <- NULL
+          rv$estimation_complete <- FALSE
+          rv$error_message <- NULL
+          rv$error_help <- NULL
+          rv$model_syntax <- NULL
 
           showNotification(
             paste0("サンプルデータを読み込みました: ", nrow(rv$data), " 行 × ", ncol(rv$data), " 列"),
