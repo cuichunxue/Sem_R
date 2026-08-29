@@ -951,13 +951,15 @@ model_server <- function(id, rv) {
       paste(syntax_parts, collapse = "\n")
     })
 
-    # 自動生成された構文をリアルタイムで反映
+    # 自動生成された構文をリアルタイムで反映（GUIビルダー使用時のみ）
     observe({
       syntax <- auto_generated_syntax()
       local_rv$generated_syntax <- syntax
-      # 構文があれば自動的にモデル構文として適用
-      if (nzchar(syntax)) {
-        rv$model_syntax <- syntax
+      active_tab <- input$model_input_method
+      if (is.null(active_tab) || active_tab == "gui") {
+        if (nzchar(syntax)) {
+          rv$model_syntax <- syntax
+        }
       }
     })
 
@@ -1279,8 +1281,9 @@ model_server <- function(id, rv) {
       output$syntax_validation <- renderUI(NULL)
     })
 
-    # --- 直接入力の同期 ---
+    # --- 直接入力の同期（直接入力タブ使用時のみ） ---
     observe({
+      req(input$model_input_method == "direct")
       if (!is.null(input$model_syntax) && trimws(input$model_syntax) != "") {
         rv$model_syntax <- input$model_syntax
       }
